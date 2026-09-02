@@ -1,0 +1,4 @@
+verification/tla2tools.jar
+verification/states/
+verification/*_TTrace_*.tla
+.DS_Store
