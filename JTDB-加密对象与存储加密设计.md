@@ -1,0 +1,189 @@
+# JTDB 加密对象与存储加密设计
+
+| 项 | 值 |
+|---|---|
+| 项目代号 | 金湯 JTDB（暂定） |
+| 承接文档 | 《实现方案》v0.3 §4、《架构决策记录》ADR-007/013、《密评合规与随机数设计》docs/12 |
+| 对应文档树 | docs/04-JTDB-Rust存储与加密对象设计.md |
+| 文档版本 | v0.1 起草稿 |
+| 日期 | 2026-09-02 |
+| 状态 | 阶段 0 专项；**本文冻结 JtEncryptedObject v1 布局**，冻结前置条件见 §10 |
+
+## 1. 目标与范围
+
+解决评审确认的 P0-2 空洞：实现方案 §4.2 的对象格式只有单块 `header || ciphertext || tag || signature`，未回答"Layer 文件可达数百 MB，读一页是否要解密整层"。本文给出**分块 AEAD（chunked AEAD）**的字节级设计，作为对象格式冻结的基础。
+
+职责划分不重复：《实现方案》§4 定义组件职责、nonce/generation 通用规则、WAL 集成范围；本文定义**对象磁盘格式的精确布局**与读写协议。冲突时以本文为准并回改实现方案。
+
+## 2. 设计原则
+
+1. **边界加密**：加密封装在存储 I/O 边界（实现方案 §4.6/规划 §3），Timeline/Layer 内部逻辑不感知密文；
+2. **信封密钥**：对象携带 wrap 后的 DEK，读路径不依赖 KMS 在线；KMS 租约（ADR-013）只控制组件能否获得 KEK/新 DEK；
+3. **分块不可变**：chunk 一经写入不可重写；任何修改 = 新对象新 generation（与实现方案 §4.3 一致）；
+4. **原子发布**：对象以"临时文件 + 最后写头 + 原子 rename"发布，杜绝部分可见；
+5. **单页读取代价恒定**：读任意一页 = 1 次定位 + 1 个 chunk 解密（O(1)），与对象大小无关。
+
+## 3. 对象总体布局（v1）
+
+```text
+┌─────────────────────────────────────────────┐
+│ Header（固定 96 B，明文）                     │ §3.1
+├─────────────────────────────────────────────┤
+│ Metadata（明文 TLV，变长，≤ 4 KiB）           │ §3.2
+│   含 Key Envelope（wrapped DEK）             │ §6
+├─────────────────────────────────────────────┤
+│ Chunk 0 .. Chunk n-1（密文 + 16 B tag）       │ §4
+├─────────────────────────────────────────────┤
+│ Trailer：SM2 对象签名（header_digest 覆盖）   │ §3.4
+└─────────────────────────────────────────────┘
+```
+
+### 3.1 Header 字段表（小端）
+
+| 偏移 | 字段 | 类型 | 说明 |
+|---|---|---|---|
+| 0 | magic | `[u8;8]` | `"JTENCOBJ"` |
+| 8 | format_version | u16 | 当前 = 1 |
+| 10 | object_type | u8 | 1=WAL_SEG 2=LAYER 3=SNAPSHOT 4=BACKUP 5=AUDIT_JOURNAL |
+| 11 | flags | u8 | bit0=chunked bit1=metadata_signed bit2=sealed |
+| 12 | header_size | u16 | 头部长度（预留扩展，当前 96） |
+| 14 | metadata_len | u32 | Metadata 区字节数 |
+| 18 | timeline_id | `[u8;16]` | UUID |
+| 34 | object_id | `[u8;16]` | UUID |
+| 50 | key_epoch | u64 | 加密本对象所用 epoch |
+| 58 | generation | u64 | 单调代际（实现方案 §4.3） |
+| 66 | chunk_size | u32 | 0 = 单发模式；否则默认 65536 |
+| 70 | chunk_count | u64 | chunk 数 |
+| 78 | payload_len | u64 | 明文总长 |
+| 86 | base_nonce | `[u8;12]` | 每对象随机（docs/12 §4 DRBG） |
+| 98 | header_digest | `[u8;32]` | SM3(offset 0..96)，供 AAD 与签名 |
+
+> 偏移 98 超出 96 B：实际头长 = 96 + 32 = **128 B**，`header_size` 字段承载。上表保留整数偏移可读性。
+
+### 3.2 Metadata TLV
+
+```text
+entry := type(u16) || len(u32) || value
+```
+
+| type | 名称 | 说明 |
+|---|---|---|
+| 0x0001 | kek_ref | KEK 标识（cluster + kek_id） |
+| 0x0002 | wrapped_dek | SM4 wrap 后的 DEK（§6） |
+| 0x0003 | lsn_range | WAL/Layer 的 [start_lsn, end_lsn) |
+| 0x0004 | created_at | 创建时间（UTC 秒） |
+| 0x0005 | node_id | 写入节点组件 ID |
+| 0x0006 | lineage_id | compaction 谱系（源对象 id 列表摘要） |
+| 0x0007 | retention_hint | PITR/epoch 保留点提示 |
+
+未知 type 必须跳过（前向兼容）。metadata_digest = SM3(Metadata 区)，进入对象签名。
+
+### 3.4 Trailer 签名
+
+```text
+signature = SM2_sign(node_key, header_digest || metadata_digest || last_chunk_tag)
+```
+
+由写入节点组件证书签名，绑定"谁写的 + 内容是什么"；验签材料来自组件证书链（docs/13）。`flags.bit1=0` 时允许无签名（仅开发模式）。
+
+## 4. 分块与随机读
+
+### 4.1 分块参数
+
+| 参数 | 值 | 理由 |
+|---|---|---|
+| chunk_size 默认 | 64 KiB | = 8 × PG 8 KiB 页；读一页至多解密 1 chunk；64 KiB 明文缓冲对 WAL 追加友好 |
+| 允许范围 | 4 KiB ~ 1 MiB | 对象类型可覆盖（WAL_SEG 可用 64 KiB；SNAPSHOT 大对象可用 256 KiB） |
+| chunk_count 上限 | 2^32-1 | chunk_index 用 u32；64 KiB × 2^32 = 256 TiB，覆盖所有对象 |
+| 单发模式 | chunk_size=0 且 chunk_count=1 | 小对象（审计 journal 段等）省去分块开销 |
+
+### 4.2 每_CHUNK 加密
+
+```text
+nonce(c)  = base_nonce XOR u96(c)        # RFC 8446 record-nonce 派生法
+ciphertext(c) || tag(c) =
+    SM4_AEAD_encrypt(dek, nonce(c), aad(c), plaintext_chunk(c))
+```
+
+**唯一性规则**（GCM 禁止 key+nonce 重用）：同一对象内 nonce(c) 由 base_nonce 与 c 一一决定，因此 chunk 内容对 index 必须不可变——重写任何 chunk = 新对象（新 base_nonce、新 generation）。base_nonce 每对象取自 DRBG（docs/12 §4），域隔离由 (timeline, object_id, epoch) 天然保证。
+
+### 4.3 AAD 字节级布局
+
+```text
+aad(c) = header_digest(32B) || object_type(1B) || key_epoch(8B)
+       || generation(8B) || chunk_index(4B) || chunk_offset(8B) || chunk_len(4B)
+```
+
+header_digest 进 AAD 使头部任何篡改导致全部 chunk 验证失败；chunk_offset/len 防止 chunk 搬移与截断重排。
+
+### 4.4 读协议（页读取）
+
+```text
+定位：页号 → chunk_index = page_offset / chunk_size
+读取：chunk_offset 处读 (chunk_size 明文对应密文 + 16B tag)
+解密：SM4_AEAD_decrypt(dek, nonce(c), aad(c)) → 明文 chunk → 取页
+```
+
+Pageserver 页缓存命中时无解密；未命中时代价 = 1 chunk 解密（64 KiB SM4 硬件加速 <10 µs 量级，基准见规划 §5）。
+
+## 5. WAL 追加语义（object_type=WAL_SEG）
+
+- WAL 段对象为**追加式**：明文在 64 KiB chunk 缓冲内累积，攒满一个 chunk 即加密追加；
+- chunk 攒满前崩溃：未落盘明文丢弃，从 Safekeeper 对端重新拉取（Neon Safekeeper 原生恢复路径，不新增协议）；
+- 段写满后：写 sealed header + trailer 签名，**临时名 `.part` → fsync(数据) → fsync(头) → 原子 rename**；
+- 已发布对象不可追加（chunk 不可变）；下一段 = 新对象（新 object_id）。
+
+## 6. 密钥封装（Key Envelope）
+
+```text
+wrapped_dek = SM4_wrap(kek, dek || dek_scope_digest)
+dek_scope_digest = SM3(cluster_id || timeline_id || epoch || lsn_range)   # ADR-014 scope 绑定
+```
+
+- 对象携带 wrapped_dek → 读路径只需 KEK（组件租约内缓存），不依赖 KMS 在线；
+- scope digest 使 wrapped_dek 无法被搬到另一 timeline/epoch 的对象里重放（对象层防回滚的补充，ADR-013）；
+- Retire 销毁 DEK 后，旧对象即使密文完整也永久不可读（加密擦除，ADR-011 客体重用依据）。
+
+## 7. 发布原子性与校验顺序
+
+```text
+写：payload chunks → metadata → sealed header → trailer 签名 → fsync → rename
+读：magic/version 校验 → flags.sealed 必须为 1 → header_digest 自校验
+    → chunk 验证（tag） → metadata TLV 解析 →（可选）trailer 验签
+```
+
+未 sealed 的对象一律拒绝（崩溃残留的 `.part` 由 GC 清理）。
+
+## 8. 与 compaction / GC / rekey 的关系
+
+- compaction 读旧对象（逐 chunk 验证解密）→ 生成新对象（新 object_id/base_nonce/epoch）→ 引用计数删除旧对象（实现方案 §4.5）；
+- `jtdb rekey`（epoch 轮换的 Rekey 阶段，ADR-013）：批量"解密-重加密"为新 epoch 对象，断点续传以对象为粒度；
+- GC 删除前校验 Timeline、PITR 保留点与 epoch 保留点（实现方案 §4.5），删除动作进审计。
+
+## 9. 格式演进规则
+
+1. 任何破坏性变更（字段增删、chunk 语义变化）必须 `format_version +1`；
+2. 读者必须接受"当前版本 -1"的窗口，跨窗口由 rekey/compaction 在线迁移；
+3. 未知 flags 位忽略；未知 metadata TLV 跳过（§3.2）；
+4. **格式冻结前置条件**：SM4 模式与 nonce 方案经 docs/12 密码专项评审通过。
+
+## 10. 测试标准
+
+| 用例 | 通过标准 |
+|---|---|
+| 篡改 header 任一字节 | chunk 验证失败，拒绝服务并审计 |
+| 篡改/交换/删除 chunk | tag 验证失败 |
+| 截断尾部 | chunk_count 与实际不符 → 拒绝 |
+| 重放旧 generation 对象 | manifest/防回滚计数检测（ADR-013） |
+| wrapped_dek 搬移到其他对象 | scope digest 不匹配 → 拒绝 |
+| 部分写/断电 | 无 sealed 对象不可见；`.part` 可清理 |
+| 随机读性能 | 页读取 P99 增幅 ≤10%（规划 §5 SLO） |
+| 64 KiB WAL 追加 | flush 粒度 < chunk 时缓冲正确、崩溃后对端重取 |
+
+## 11. 待验证问题
+
+1. SM4-GCM 与 SM4-CCM 的密评适用性对比（docs/12 §7.1 联动）；
+2. chunk_size 64 KiB 的实测基准（读放大 vs 缓冲成本），SNAPSHOT/BACKUP 是否用 256 KiB；
+3. TOAST 外部文件与 PG 关系文件是否统一采用本格式（倾向：统一，object_type 扩展）；
+4. trailer 验签的性能代价与抽样验证策略（全验 vs 首次+审计触发）；
+5. 远程对象存储的 multipart 上传与本格式 rename 语义的映射。
