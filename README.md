@@ -23,7 +23,8 @@
 | 8 | JTDB-加密对象与存储加密设计.md | docs/04：chunked AEAD 对象格式（字节级） | v0.1 | 待技术评审 |
 | 9 | JTDB-安全上下文与MLS设计.md | docs/05：行级标记、pg_jt_label、谓词下推 | v0.1 | 待技术评审 |
 | 10 | JTDB-核心接口字段规格.md | KMS/Audit 接口字段级定义 | v0.1 | 待技术评审 |
-| 11 | verification/KmsKeyEpochRotation.tla | ADR-013 轮换协议 TLA+ 模型 | — | TLC 已验证 |
+| 11 | JTDB-正式开发前外部技术审计.md | 外部技术尽调：Neon 停滞、竞品坐标、设计对标、决策门 | v1.0 | 供路线拍板 |
+| 12 | verification/KmsKeyEpochRotation.tla | ADR-013 轮换协议 TLA+ 模型 | — | TLC 已验证 |
 
 ## 2. 目录映射（建仓时迁入 docs/）
 
