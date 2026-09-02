@@ -126,6 +126,22 @@ header_digest 进 AAD 使头部任何篡改导致全部 chunk 验证失败；chu
 
 Pageserver 页缓存命中时无解密；未命中时代价 = 1 chunk 解密（64 KiB SM4 硬件加速 <10 µs 量级，基准见规划 §5）。
 
+### 4.5 与 IEEE 1619 对标及 nonce 唯一性论证（2026-09-03 依外部审计补充）
+
+外部事实（审计 §3）：块存储加密主流是 AES-XTS（IEEE 1619），刻意不提供篡改认证；认证式变体由 IEEE 1619.1-2018 定义（GCM、CBC+HMAC、XTS-HMAC）。**本格式定位为 1619.1-2018 GCM 认证变体的对象化实例**，密评/审计对标时按此引用。
+
+(key, nonce) 唯一性论证（GCM 安全性前提）：
+
+| 场景 | 论证 |
+|---|---|
+| 同对象内 | nonce(c) = base_nonce XOR u96(c)，chunk_index c 唯一 ⇒ 对象内唯一 |
+| 跨对象 | base_nonce 每对象独立取自 DRBG（96-bit）；10^9（≈2^30）个对象的生日碰撞概率约 2^-37，可忽略；且 DEK 按 epoch/timeline 隔离进一步缩小共享空间 |
+| 跨 epoch | DEK 不同 ⇒ (key, nonce) 对自动不同 |
+| 崩溃重写 | 未 sealed 对象不可读、不发布（§7）；重试从头写新对象（新 base_nonce），不存在"同一 nonce 写入不同内容可被观察到"的路径 |
+| chunk 改写 | 禁止（chunk 不可变，§2 原则 3）；任何修改 = 新对象新 generation |
+
+残余风险与控制：DRBG 降级到软件源时（docs/12 §4.1）KMS 拒发新 DEK，随机性前提仍受控；docs/12 密码专项评审需复核本论证（§10 冻结前置条件）。
+
 ## 5. WAL 追加语义（object_type=WAL_SEG）
 
 - WAL 段对象为**追加式**：明文在 64 KiB chunk 缓冲内累积，攒满一个 chunk 即加密追加；

@@ -79,7 +79,7 @@ java -cp tla2tools.jar tlc2.TLC -deadlock KmsKeyEpochRotation.tla
 
 | 决策 | 编号 | 一句话 |
 |---|---|---|
-| Neon 源码基座 | ADR-001 | 直接 fork 并修改，不重写存储 |
+| Neon 源码基座 | ADR-001 | 直接 fork 并修改（2026-09-03 上游失活条款：release-9129 自治基线） |
 | Rust 为核心语言 | ADR-002 | C 仅保留内核边界与 FFI |
 | 三平面=信任边界 | ADR-003 | 不强制三台机器 |
 | Compute 最终边界 | ADR-005 | 网关不是安全边界 |

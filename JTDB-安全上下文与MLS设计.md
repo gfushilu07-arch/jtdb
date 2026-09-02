@@ -54,6 +54,20 @@ dominate(a, b) = a.Level >= b.Level AND a.Categories ⊇ b.Categories
 - INSERT：行标签 = 主体标签（若主体支配表默认）或表默认标签；
 - ALTER TABLE ... SET LABEL：E3 事件；已有行不自动重标（提供 `jt_relabel_table()` 受控重标工具，逐批 + 可中断 + 审计）。
 
+### 3.4 达梦安全版语义兼容（2026-09-03 补充，迁移目标）
+
+外部核实（审计 §1.2）：达梦 DM8 安全版行级 MAC 标签为"等级：范围：组"三元组、每行携带标记列、由 SYSSSO 管理、初始化时 `ENABLE_MAC=1` 开启，且达梦 MPP 场景不支持 MAC。JTDB 作为替换目标提供语义映射：
+
+| 达梦概念 | JTDB 对应 |
+|---|---|
+| 等级 | Level（有序档位，数值化映射） |
+| 范围 / 组 | Categories（集合包含语义对齐） |
+| SYSSSO（安全标记管理员） | jt_secadmin（ADR-012） |
+| ENABLE_MAC 初始化开关 | 按表启用行级标记（§5.1） |
+| 每行标记列 | jt_label 隐藏属性（§5.2 方案 A） |
+
+替换论证要点：达梦 MPP 不支持 MAC，JTDB 统一语义覆盖。存量标签与用户标记迁移由 `jt_migrate_from_dameng` 工具承接（迁移工具工作域）。
+
 ## 4. 目录设计
 
 ```sql
