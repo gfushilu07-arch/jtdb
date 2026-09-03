@@ -47,6 +47,7 @@
 | 2026-09-03 | 工程环境事实：Docker VM 默认内存下 make 会在 C 编译阶段被 OOM 静默击杀（两次复现，均死于 communicator_process.c 之后的文件）；驱动已改为分阶段容器缓解，正式构建建议在 CI Linux 原生环境执行（规划 §9.3 CI 最小集） |
 | 2026-09-03 | **pgxn/neon PG18 兼容第一层完成（子模块提交 ac201a5）**：全部 22 个 C 文件在 fork PG18 头文件下编译通过，**neon.so 链接产出（199MB）**。修复清单：①smgr 注册制（smgrregister + neon_owns 谓词 + unlogged/SLRU 全局钩子挂载，libpagestore 注册点改造）②neon_startreadv 同步语义 AIO 适配（PGAIO_HF_SYNCHRONOUS + set_target_smgr，真异步为第二层）③neon_maxcombine（保守返回 1）④lwlsn：block 级钩子降级为扩展内部函数 + LastWrittenLsnLock 改 named tranche（neon_lwlsn）⑤INT64_MODIFIER→<inttypes.h> 版本分支 ⑥WL_ 标志头文件迁移 ⑦ReplicationSlotAcquire 新签名。**工程教训**：pgxn/neon/Makefile 默认目标不是 all（首 target 是 communicator_process.o），必须显式 `make all`——此前多轮"构建中断"实为此假象 |
 | 待办 | ①neon.so 在 PG18 compute 内实装载与回归（需完整 compute 构建）②neon_startreadv 真异步（communicator × AIO worker）——四象限基准前置 ③safekeeper/walproposer C 库 ④v18 WAL 常量逐项核对 ⑤四象限基准 |
+| 2026-09-03（续） | **Rust 侧 PG18 闭环**：①`libwalproposer.a` 按 fork PG18 头文件重编产出（walproposer_compat 的 pq_copymsgbytes 签名随 PG18 改 void*）；②walproposer Rust 绑定 build.rs 切 v18 + compat 头补 `storage/smgr.h`（PG18 SmgrId 声明需要）；③**工程规则落地：`pg_install/v18` 已替换为 fork 安装树头文件**（官方 tarball 头缺 NEON_SMGR/SmgrId 符号导致 bindgen 失败——印证"compute 构建必须用 fork 源码"规则，build-pg.sh 的 v18 官方 tarball 产物仅保留做对照）；④**全 workspace `cargo check` 绿线（含 safekeeper/walproposer，无排除项）——决策门任务 1 完全闭环** |
 
 ## 性能约束（响应"注意性能问题"）
 
