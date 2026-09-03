@@ -124,3 +124,12 @@
 2. ADR-006 增补边界：复用对象为冻结快照，维护责任完全归属 JTDB；
 3. 实现方案 §1.3 同步机制作废，改用于自治基线溯源；规划文档 §8 记录拍板（决策 #7）、§9.2 修订为固化基线规则；
 4. "第一批交付是否包含 Neon 存储栈"由 §5 决策门（4-6 周可行性验证：release-9129 双平台编译 + PG 18 支持边界核实 + MAC 补丁 PoC 基准）结果确定——**该门仅决定交付分期，不影响自治维护承诺**。
+
+## 9. 决策门执行记录
+
+| 任务 | 内容 | 结果 |
+|---|---|---|
+| 1 | release-9129 在本机（aarch64）编译跑通 | **部分通过（2026-09-03）**：Neon workspace `cargo check` 绿线——覆盖 pageserver、proxy、compute_tools、storage_controller、postgres_ffi 等 24 个 crate；safekeeper/walproposer 暂排除（需 `make walproposer-lib` 在容器内构建 C 库 libwalproposer.a，下一步）。过程中解决两个平台问题：①postgres_ffi 需要 pg_install/{v14..v17} 头文件 → 用 Debian bookworm 容器按 vendor/revisions.json 精确版本（17.5/16.9/15.13/14.18）构建（scripts/build-pg.sh，产物在缓存卷，删除 Linux bin 以触发头文件 fallback）；②macOS bindgen 与 PG port.h 的 strlcat/strlcpy 声明冲突 → pg_config.h 的 HAVE_DECL_STRLCAT/STRLCOPY 置 1（已固化进 build-pg.sh）。日志：缓存卷 logs/cargo-check-neon-9129-3.log |
+| 2 | PG 18 支持边界核实 | **已核实（2026-09-03）**：release-9129 的 vendor/revisions.json 仅含 PG 14.18/15.13/16.9/17.5，**不支持 PG 18**（与 §1.3 预判一致：快照早于 PG 18 发布）。结论：JTDB 以 PG 17 起步；PG 18 追平列为自治维护升级议题（升级 vendor PG 子模块至 18.x + 评估异步 I/O 等内核变化对 Neon 集成影响） |
+| 3 | MAC 补丁 PoC 基准 | 未开始（依赖任务 1） |
+| — | 双平台 CI（x86-64 + aarch64 信创） | 未开始；本机 aarch64 macOS 先行，x86-64 信创环境待硬件到位 |
