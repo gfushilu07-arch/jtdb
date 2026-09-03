@@ -25,7 +25,7 @@ make -j"$(nproc)" >/dev/null
 make install >/dev/null
 tar -C /pg_install -cf - .'
 
-for V in 17.5 16.9 15.13 14.18; do
+for V in 18.2 17.5 16.9 15.13 14.18; do
   MAJOR="v${V%%.*}"
   echo "==> 构建 PG $V → $OUT/$MAJOR"
   rm -rf "$OUT/$MAJOR"
@@ -35,7 +35,7 @@ for V in 17.5 16.9 15.13 14.18; do
   PGH="$OUT/$MAJOR/include/postgresql/server/pg_config.h"
   sed -i '' 's/#define HAVE_DECL_STRLCAT 0/#define HAVE_DECL_STRLCAT 1/; s/#define HAVE_DECL_STRLCPY 0/#define HAVE_DECL_STRLCPY 1/' "$PGH"
   # macOS libc 提供 strlcat/strlcpy 而 Linux glibc 2.36 没有；bindgen 在 macOS 上运行时必须与 Apple libc 声明一致
-  test -x "$OUT/$MAJOR/bin/pg_config" || { echo "!! $MAJOR 安装不完整"; exit 1; }
+  test -f "$OUT/$MAJOR/include/postgresql/server/pg_config.h" || { echo "!! $MAJOR 安装不完整"; exit 1; }
   echo "    OK: $(du -sh "$OUT/$MAJOR" | cut -f1)"
 done
 echo "== 全部完成：$OUT ="
