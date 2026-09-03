@@ -200,12 +200,14 @@ BranchKeyGrant { parent_timeline, up_to_lsn, max_epoch, expires_at }
 | 单机主备 | RPO=0（同步）/≤5s（异步），RTO ≤5min | 故障演练 |
 | 审计留存 | 满足 ≥6 个月，容量模型按事件速率分级 | 容量测试 |
 
-**基准方法（P1-6 补充，绑定上表全部数值）**：
+**基准方法（P1-6 补充，绑定上表全部数值；2026-09-03 按 ADR-015 升级为 PG 18 基线）**：
 
 ```text
-环境：   8C/16G 单机 + NVMe SSD + 10GbE
+环境：   8C/16G 单机 + NVMe SSD + 10GbE；PostgreSQL 18（Neon fork REL_18_STABLE_neon）
 负载：   TPC-C 兼容（100 warehouse / 32 并发）测 TPS 与 P99；WAL 吞吐用高写 pgbench
 口径：   相对开销 = "JTDB 全特性开启" vs "同基线关闭安全特性" 对照；另测绝对值下限
+四象限： AIO on/off × 本地存储/Neon 存储路径 × 安全层 on/off（PG18 AIO 收益不得被安全层吃掉；
+         行级标记谓词须在 read-stream 批量预读路径验证）
 冻结：   阶段 0 用锁定上游基线跑一轮后复核数值（§8 决策 #2）
 ```
 
