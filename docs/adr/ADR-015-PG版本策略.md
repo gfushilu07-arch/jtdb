@@ -42,7 +42,10 @@
 | 日期 | 进展 |
 |---|---|
 | 2026-09-03 | 第一层接线完成（子模块提交 4dc611e，分支 jtdb/release-9129-pg18）：postgres_versioninfo 加 PG18 变体（含 PgVersionId 上界 190000）；postgres_ffi 三个宏分发 + build.rs 五版本循环 + pg_constants_v18（占位）；wal_decoder 三处 match 补 PG18 臂（heap/neon/dbase 结构经 vendor/postgres-v18 头文件核实与 PG17 一致）；pageserver walingest CheckPoint 补 V18 臂；revisions.json 加 v18=18.2@a616eef；workspace `cargo check`（除 safekeeper/walproposer C 库项）绿线 |
-| 待办 | ②pgxn/neon C 扩展 PG18 兼容（smgr×AIO 对接，最大项）③safekeeper/walproposer C 库构建后补入检查范围 ④v18 常量逐项核实（WAL 解析启用前硬门禁）⑤PG18 compute 实构建（用 fork 源码）⑥四象限基准 |
+| 2026-09-03 | **pgxn/neon PG18 编译驱动建立**（scripts/pgxn-pg18-driver.sh，三阶段容器：PG 18.2 fork pgxs 持久化构建 / communicator Rust 桥 / C 编译错误收集；全部产物在缓存卷）。**真实错误清单定性**：①f_smgr 函数表变化——PG18 新增 `smgr_startreadv(PgAioHandle)`（异步 AIO 启动）、`smgr_maxcombine`，同时移除 `smgr_start_unlogged_build/finish_unlogged_build_phase_1/end_unlogged_build/smgr_read_slru_segment`（改为 smgr.h 钩子指针 start_unlogged_build_hook 等）；②lwlsn 钩子类型随"Move LastWrittenLsnLock to neon extension"迁移，需在扩展内定义；③INT64_HEX_FORMAT/UINT64_HEX_FORMAT 需适配 PG18 的 INT64_MODIFIER；④Custom_XLogReaderRoutines 从 xlogreader.h 移至 replication/logical.h（fork 已提供，include 调整即可）；⑤privileged_role_name 等 fork GUC 符号——用官方 tarball 头文件编译时误报，**必须用 vendor/postgres-v18（fork）头文件**（驱动已改为 fork 源码 VPATH 构建） |
+| 2026-09-03 | **v18 常量硬门禁第一轮核实完成**：XACT_XINFO_HAS_DROPPED_STATS(1<<8)、XLOG_DBASE_*(0x00/0x10/0x20)、BKPIMAGE_*(0x02/0x04/0x08/0x10)、PGDATA_SUBDIRS（23 项逐字比对）全部与 PG17 一致；SIZEOF_RELMAPFILE=524 维持有效（MAX_MAPPINGS=64 与 PG17 相同；期间一次误判 532 已按源码回滚——门禁流程生效的例证）。剩余待核：XlHeapInsert 等 WAL 解析启用前的逐项核对 |
+| 2026-09-03 | 工程环境事实：Docker VM 默认内存下 make 会在 C 编译阶段被 OOM 静默击杀（两次复现，均死于 communicator_process.c 之后的文件）；驱动已改为分阶段容器缓解，正式构建建议在 CI Linux 原生环境执行（规划 §9.3 CI 最小集） |
+| 待办 | ①pgxn/neon 按清单修复（f_smgr AIO 适配为最大单项：实现 smgr_startreadv + PgAioHandle 回调对接 communicator 异步读）②safekeeper/walproposer C 库构建 ③v18 WAL 常量逐项核对 ④PG18 compute 实构建与四象限基准 |
 
 ## 性能约束（响应"注意性能问题"）
 
