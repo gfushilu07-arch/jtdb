@@ -1,0 +1,4 @@
+[submodule "upstream/neon"]
+	path = upstream/neon
+	url = https://github.com/neondatabase/neon.git
+	branch = release-9129
