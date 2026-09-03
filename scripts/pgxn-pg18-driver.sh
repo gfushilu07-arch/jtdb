@@ -52,8 +52,17 @@ apt-get update -qq && apt-get install -y -qq build-essential pkg-config ca-certi
 test -x "$CARGO_HOME/bin/cargo" || curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path >/dev/null
 cd /neon/pgxn/neon
 export CARGO_TARGET_DIR=/jtdb/target/pgxn
-make -k NEON_CARGO_ARTIFACT_TARGET_DIR=/jtdb/target/pgxn PG_CONFIG=/jtdb/pgxs-pg18-fork/bin/pg_config 2>&1
-echo "MAKE_DONE rc=$?"
+# 注意：Makefile 默认目标不是 all（首目标是 communicator_process.o），必须显式 all
+make all NEON_CARGO_ARTIFACT_TARGET_DIR=/jtdb/target/pgxn PG_CONFIG=/jtdb/pgxs-pg18-fork/bin/pg_config 2>&1
+rc=$?
+# debug 产物在 $(TARGET_DIR)/debug；链接器按传入路径找 libcommunicator.a（不带 /debug），补拷
+if [ -f /jtdb/target/pgxn/debug/libcommunicator.a ] && [ ! -f /jtdb/target/pgxn/libcommunicator.a ]; then
+  cp /jtdb/target/pgxn/debug/libcommunicator.a /jtdb/target/pgxn/libcommunicator.a
+  make all NEON_CARGO_ARTIFACT_TARGET_DIR=/jtdb/target/pgxn PG_CONFIG=/jtdb/pgxs-pg18-fork/bin/pg_config 2>&1
+  rc=$?
+fi
+echo "MAKE_DONE rc=$rc"
+ls -la /neon/pgxn/neon/neon.so 2>/dev/null || true
 ' >> "$LOG" 2>&1
 
 echo "=== 错误摘要（完整日志: $LOG）==="
