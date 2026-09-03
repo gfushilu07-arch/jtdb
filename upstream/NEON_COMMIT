@@ -1,0 +1,10 @@
+NEON_COMMIT=5340423416b46c85841904f42c93be9af145c643
+NEON_TAG=release-9129
+NEON_TAG_DATE=2025-07-25
+POSTGRES_COMMIT=see-upstream-compute-repo（PG 大版本支持边界 = 决策门任务 2）
+JTDB_PATCHSET_ID=jtdb-patchset-0.0.1
+BUILD_TOOLCHAIN=rust-1.98.0-stable-aarch64-apple-darwin
+DEPENDENCY_LOCKFILE=upstream（release-9129 自带 Cargo.lock）
+NOTE=ADR-001 上游失活条款基线（2026-09-03 拍板"自行维护 Neon fork"）。
+NOTE2=子模块为 --depth 1 浅克隆（主盘空间受限）；复刻时先 git fetch --depth 1 origin tag release-9129 再 checkout。
+NOTE3=全部构建产物重定向到 /Volumes/fushilu/.caches/jtdb/（source scripts/env.sh）。

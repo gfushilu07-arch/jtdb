@@ -22,20 +22,42 @@
 | 7 | JTDB-连接与会话治理设计.md | docs/14：内建连接池、主体亲和、会话复位 | v0.1 | 待技术评审 |
 | 8 | JTDB-加密对象与存储加密设计.md | docs/04：chunked AEAD 对象格式（字节级） | v0.1 | 待技术评审 |
 | 9 | JTDB-安全上下文与MLS设计.md | docs/05：行级标记、pg_jt_label、谓词下推 | v0.1 | 待技术评审 |
-| 10 | JTDB-核心接口字段规格.md | KMS/Audit 接口字段级定义 | v0.1 | 待技术评审 |
+| 10 | JTDB-核心接口字段规格.md | KMS/Audit 接口字段级定义（docs/15） | v0.1 | 待技术评审 |
 | 11 | JTDB-正式开发前外部技术审计.md | 外部技术尽调：Neon 停滞、竞品坐标、设计对标、决策门 | v1.0 | 供路线拍板 |
 | 12 | verification/KmsKeyEpochRotation.tla | ADR-013 轮换协议 TLA+ 模型 | — | TLC 已验证 |
 
-## 2. 目录映射（建仓时迁入 docs/）
+## 2. 仓库布局（2026-09-03 建仓，按实现方案 §1.2）
 
-| 现路径（根目录） | 计划路径 |
-|---|---|
-| JTDB-密评合规与随机数设计.md | docs/12-JTDB-密评合规与随机数设计.md |
-| JTDB-身份与节点引导设计.md | docs/13-JTDB-身份与节点引导设计.md |
-| JTDB-连接与会话治理设计.md | docs/14-JTDB-连接与会话治理设计.md |
-| JTDB-加密对象与存储加密设计.md | docs/04-JTDB-Rust存储与加密对象设计.md |
-| JTDB-安全上下文与MLS设计.md | docs/05-JTDB-安全上下文与MLS设计.md |
-| 其余 docs/01~03、06~11 | 待起草（清单见实现方案 §11） |
+```text
+├── docs/                      # 编号文档树（见上表；旧文件名引用均对应此树）
+│   ├── 00-架构评审意见与改进规划 / 00-正式开发前外部技术审计
+│   ├── 01-总体架构 / 02-技术实现方案
+│   ├── 04-加密对象 / 05-MLS / 12-密评 / 13-身份引导 / 14-连接治理 / 15-接口规格
+│   └── adr/JTDB-架构决策记录.md（ADR-001~014）
+├── upstream/neon/             # Neon 子模块，锁定 release-9129（见 upstream/NEON_COMMIT）
+├── postgres/                  # JTDB Compute 源码与补丁（jtdb-patches）
+├── pageserver/ safekeeper/ proxy/
+├── libs/                      # jt-crypto-api / jt-crypto-sm / jt-encrypted-object / jt-key-epoch
+│                              # jt-storage-protocol / jt-audit-proto / jt-postgres-ffi / jt-common
+├── services/                  # jt-gateway / jt-controller / jt-pdp / jt-kms / jt-attest / jt-audit-*
+├── cli/jt-cli/  sdk/  extensions/
+├── deployment/                # single-node / primary-standby / separated-planes / cluster
+├── tests/  compliance/  packaging/
+├── scripts/env.sh             # 构建环境（产物重定向缓存卷）
+└── verification/              # TLA+ 协议模型
+```
+
+待起草编号：03-Compute 内核改造、07-审计平面、08-国密与可信验证、09-开发体验与扩展生态、10-部署升级备份恢复、11-测试兼容性供应链（清单见 docs/02 §11）。文档间引用如出现旧文件名（如《信创安全数据库-实现方案》），均指本树中对应编号文件。
+
+## 2.1 构建环境（主盘空间受限）
+
+本机主盘仅余个位数 GB，**所有构建产物必须落在缓存卷**。任何 cargo/rustup 调用前先：
+
+```bash
+source scripts/env.sh
+```
+
+该脚本将 `RUSTUP_HOME`、`CARGO_HOME`、`CCACHE_DIR`、`CARGO_TARGET_DIR` 全部重定向到 `/Volumes/fushilu/.caches/jtdb/`。禁止在本仓库内运行会产生大体积 `target/` 的构建；Neon 子模块构建使用 `JTDB_NEON_TARGET_DIR`。
 
 ## 3. 术语表
 
