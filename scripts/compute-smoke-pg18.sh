@@ -12,7 +12,7 @@ NEON_WT="$(pwd)/upstream/neon"
 
 docker run --rm -v "$NEON_WT":/neon -v "$JTDB_CACHE_ROOT":/jtdb debian:bookworm bash -c '
 set -u
-export RUSTUP_HOME=/jtdb/rustup-container CARGO_HOME=/jtdb/cargo-container
+export RUSTUP_HOME=/jtdb/rustup-container CARGO_HOME=/jtdb/cargo-container RUSTUP_TOOLCHAIN=1.98.0
 export PATH="$CARGO_HOME/bin:$PATH"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq build-essential pkg-config ca-certificates curl libcurl4-openssl-dev locales >/dev/null 2>&1

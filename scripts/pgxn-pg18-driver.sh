@@ -9,7 +9,7 @@ set -uo pipefail
 LOG="$JTDB_CACHE_ROOT/logs/pgxn-pg18-errors.log"
 NEON_WT="$(pwd)/upstream/neon"
 
-DOCKER_ENV=(-e RUSTUP_HOME=/jtdb/rustup-container -e CARGO_HOME=/jtdb/cargo-container -e PATH=/jtdb/cargo-container/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin)
+DOCKER_ENV=(-e RUSTUP_HOME=/jtdb/rustup-container -e CARGO_HOME=/jtdb/cargo-container -e RUSTUP_TOOLCHAIN=1.98.0 -e PATH=/jtdb/cargo-container/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin)
 
 echo "=== 阶段 0：PG 18.2 fork（vendor/postgres-v18）+ pgxs（持久化） ==="
 docker run --rm -v "$NEON_WT/vendor/postgres-v18":/pgsrc:ro -v "$JTDB_CACHE_ROOT":/jtdb debian:bookworm bash -c '

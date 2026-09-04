@@ -1,0 +1,29 @@
+# JTDB 构建镜像：固化系统依赖层（Rust 工具链走缓存卷挂载，不入镜像）
+# 构建: source scripts/env.sh && docker build -t "$JTDB_BUILD_IMAGE" -f Dockerfile.jtbuild .
+FROM debian:bookworm@sha256:6ebd97fa83deb272194a2cf015b3d26a4d538e9ad3a7a79d544c8af5b0a01443
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -qq && \
+    apt-get install -y -qq \
+      build-essential \
+      pkg-config \
+      ca-certificates \
+      curl \
+      bzip2 \
+      bison \
+      flex \
+      perl \
+      clang \
+      libclang-dev \
+      protobuf-compiler \
+      libcurl4-openssl-dev \
+      strace \
+      procps \
+      binutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# 构建用户（与宿主 uid 对齐，postgres 拒绝 root）
+RUN groupadd -g 501 pg && useradd -u 501 -g 501 -m pg
+
+# Rust 工具链由缓存卷挂载提供（-e RUSTUP_HOME/CARGO_HOME=...），镜像内不安装
+WORKDIR /neon

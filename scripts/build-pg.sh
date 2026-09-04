@@ -6,7 +6,7 @@
 set -euo pipefail
 
 : "${JTDB_CACHE_ROOT:?请先 source scripts/env.sh}"
-OUT="$JTDB_CACHE_ROOT/pg_install"
+OUT="$JTDB_PG_INSTALL"
 mkdir -p "$OUT"
 
 IMAGE="debian:bookworm"
