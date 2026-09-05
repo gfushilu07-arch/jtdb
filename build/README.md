@@ -61,3 +61,10 @@ docker build -t "$JTDB_BUILD_IMAGE" -f Dockerfile.jtbuild .
 5. **PG18 reorderbuffer API 改名**：GetChange→AllocChange、GetTupleBuf→AllocTupleBuf（跟随 vendor/postgres-v18）。
 6. **PG18 LWLock tranche 请求必须在 shmem_request_hook 内**（_PG_init 阶段请求直接 FATAL）。
 7. **storage_controller 二进制需与 neon_local 同目录**；storcon 只认 distrib 下 v16/v15/v14/v17 布局。
+8. **macOS 冒烟的僵尸 postmaster**：storcon 内部 PG（`postgres -D .../storage_controller_db`，端口 1235）不在旧 pkill 模式内——残留进程占端口后，新 initdb 的数据目录被 storcon 连接时报 `pg_filenode.map missing` 退出，全链路卡死。清理必须含该模式并轮询确认端口释放（full-path-smoke-macos.sh §0）。
+9. **endpoint_storage/storage_broker 二进制缺失**：`neon_local init` 会启动 endpoint_storage(9993) 且约定 broker(50051)；cargo 五件套（neon_local/pageserver/safekeeper/storage_controller/compute_ctl）之外需补 `cargo build -p endpoint_storage -p storage_broker`，endpoint start 会连 9993。
+10. **timeline 版本由 tenant create 决定**：`neon_local init/tenant create` 自动创建初始时间线并映射为 main，默认 PG17；单独 `timeline create --branch-name main` 必撞 "branch already mapped"。要 PG18 时间线必须 `tenant create --pg-version 18`（endpoint 也要 `--pg-version 18`，否则 basebackup 是 PG17 镜像、compute 起不来）。
+11. **PG18 注册制 smgr 必填字段**：f_smgr 新增 `.smgr_owns/.smgr_fd`，内核 smgropen 逆序遍历 owns 决定归属——漏赋值即空指针 SIGSEGV（neon_smgr 与 walredo inmem_smgr 双双踩过）；smgrregister 还会 strcmp smgr_name，NULL 同样崩。
+12. **PG18 AIO 读状态机**：neon_startreadv 不能只同步读+打 HF_SYNCHRONOUS 标志——handle 停在 HANDED_OUT 时 pgaio_io_wait 直接 PANIC（owner 要求 SUBMITTED/COMPLETED_*）。正确序列：call_stage（buffer 引针，与完成回调对称）→ 清 handed_out_io → prepare_submit → process_completion（**result 单位是块数不是字节**，md 的字节→块换算在 MD_READV 完成回调里，neon 未注册须自己给块数；传字节→nblocks_done 越界→随机 SIGBUS）。
+13. **PG18 walredo 独立进程启动适配**：CalculateShmemSize/PMSignalShmemInit→MaxLivePostmasterChildren 依赖 num_pmchild_slots，须在 InitializeShmemGUCs 之前 InitPostmasterChildSlots()；LOCALLOCK 哈希（PG18 移入 BaseInit→InitLockManagerAccess）须自补，否则 redo 触及 vm_extend 锁路径即 hash_search(NULL) 崩。
+14. **ControlFileData 布局版本相关**：postgres_ffi 顶层 re-export 的是 v14 绑定；PG18 起结构有变（crc 偏移 292 vs 288），pageserver 导入 initdb 产物必须按 PG_VERSION 分派解码，否则 "invalid CRC in control file"。
