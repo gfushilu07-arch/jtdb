@@ -59,3 +59,13 @@
 - 新增基准维度：`AIO on/off × 本地存储/Neon 存储路径 × 安全层 on/off` 四象限；
 - 行级标记谓词不得阻断 PG18 read-stream 预读的批量化收益（谓词下推实现需在 read-stream 批量路径验证）；
 - 验收顺序：先证明"JTDB on PG18 ≈ vanilla PG18"，再证明"安全层增量 ≤ SLO"。
+
+## 执行记录（续）
+
+| 日期 | 事项 |
+|---|---|
+| 2026-09-06 | **macOS 原生全链路 SQL 全绿**：storcon→broker→endpoint_storage→pageserver→safekeeper→PG18.2 compute（含 neon.dylib 全家桶）；CREATE TABLE/INSERT/SELECT 通过。累计修复 PG18 移植缺陷 12 项（详见 build/README.md 陷阱 8~16）：僵尸 postmaster 清理、endpoint_storage/broker 二进制、timeline PG 版本、ControlFileData 版本分派、neon smgr owns/fd、AIO 读状态机（call_stage→prepare_submit→process_completion，result=块数）、walredo 四项（smgr_name/owns、PMChildSlots、InitLockManagerAccess、io_method=sync+AioShmemInit）、smgrinit 无 guard 的 on_proc_exit 泄漏、inmem smgr startreadv/maxcombine、**data checksums 服务端盖章**（fork 开启校验和后 pageserver 重建页须重算 pd_checksum，算法离线验证 6/6） |
+| 2026-09-06 | **功能测试套件 22/22**：scripts/test-suite-pg18.sh（DDL/序列/JSON/numeric/bytea/事务回滚/冲突中止/GIN/VACUUM/2 万行跨页读/CHECKPOINT/ALTER/4 并发/kill -9 崩溃恢复/恢复后可写） |
+| 2026-09-06 | **单元测试**：postgres_ffi 13、wal_decoder 6、control_plane 1、safekeeper 24、pageserver_api 51 全绿；pageserver lib 组跑 200/264（64 失败为 macOS eviction/upload 测试隔离类，单跑均过，非 PG18 改动路径——遗留跟踪） |
+| 2026-09-06 | **四象限基准（macOS debug 构建，仅相对值）**：pgbench s10/4c/30s。本地-sync 1221/9221（混合/只读 TPS）、本地-worker 1720/14538、Neon-sync 86.9/510.8、Neon-worker 157.9/524.3。Neon 路径 1/7~1/18 于 vanilla：debug 构建放大 CPU 开销 + 页重建/传输/盖章；正式数字按 §9.3 Linux NVMe + release 复测。Neon 内部 worker 略优于 sync（157.9 vs 86.9），待 release 构建复核 |
+| 遗留 | ①正式基准待 Linux NVMe（用户已提出可提供）②startreadv 真异步第二层 ③PG17 对照与 PG14/15/16 compute 验证（macOS pgxn v14~v17 构建未做）④pgbench -i 过程暴露 walredo 大负载稳定性已修复，持续观察 |
