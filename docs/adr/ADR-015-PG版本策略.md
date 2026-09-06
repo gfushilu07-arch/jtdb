@@ -69,3 +69,4 @@
 | 2026-09-06 | **单元测试**：postgres_ffi 13、wal_decoder 6、control_plane 1、safekeeper 24、pageserver_api 51 全绿；pageserver lib 组跑 200/264（64 失败为 macOS eviction/upload 测试隔离类，单跑均过，非 PG18 改动路径——遗留跟踪） |
 | 2026-09-06 | **四象限基准（macOS debug 构建，仅相对值）**：pgbench s10/4c/30s。本地-sync 1221/9221（混合/只读 TPS）、本地-worker 1720/14538、Neon-sync 86.9/510.8、Neon-worker 157.9/524.3。Neon 路径 1/7~1/18 于 vanilla：debug 构建放大 CPU 开销 + 页重建/传输/盖章；正式数字按 §9.3 Linux NVMe + release 复测。Neon 内部 worker 略优于 sync（157.9 vs 86.9），待 release 构建复核 |
 | 遗留 | ①正式基准待 Linux NVMe（用户已提出可提供）②startreadv 真异步第二层 ③PG17 对照与 PG14/15/16 compute 验证（macOS pgxn v14~v17 构建未做）④pgbench -i 过程暴露 walredo 大负载稳定性已修复，持续观察 |
+| 2026-09-06 | **版本矩阵范围判定**：pgxn v14~v17 构建需对应版本的 Neon fork 安装树（access/neon_xlog.h、f_smgr 为 fork 专有；官方 tarball 不可用）。macOS 侧 fork 仅 v18；v14~v17 fork 安装树在 Linux 构建产物（JTDB_PG_INSTALL）。版本矩阵回归归入 Linux/CI 环境（规划 §9.3），macOS 验收聚焦 PG18 |
