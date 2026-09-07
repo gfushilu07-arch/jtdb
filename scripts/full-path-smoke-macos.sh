@@ -21,8 +21,9 @@ mkdir -p "$(dirname "$LOG")"
 
 exec > >(tee "$LOG") 2>&1
 
+SMOKE_PG_VERSION="${SMOKE_PG_VERSION:-18}"
 BIN="$JTDB_CACHE_ROOT/target/rust-macos/debug"
-PGROOT="$JTDB_CACHE_ROOT/mac-pg-install/v18"
+PGROOT="$JTDB_CACHE_ROOT/mac-pg-install/v$SMOKE_PG_VERSION"
 HOME_DIR=/tmp/neonhome-macos
 export POSTGRES_DISTRIB_DIR="$JTDB_CACHE_ROOT/mac-pg-install"   # neon_local 定位 PG 安装树（local_env.rs）
 
@@ -55,7 +56,8 @@ for b in compute_ctl endpoint_storage storage_broker neon_local pageserver safek
   [ -x "$BIN/$b" ] || fail "$BIN/$b 缺失（需补构建）"
 done
 echo "Rust 二进制 7 件套 OK"
-ls "$PGROOT/lib/postgresql/neon.dylib" >/dev/null || fail "neon.dylib 缺失"
+NEON_EXT="$PGROOT/lib/postgresql/neon.dylib"; [ -f "$NEON_EXT" ] || NEON_EXT="$PGROOT/lib/postgresql/neon.so"
+ls "$NEON_EXT" >/dev/null || fail "neon 扩展缺失"
 "$PGROOT/bin/postgres" --version || fail "v18 postgres 不可执行"
 
 echo "=== 2) neon_local init ==="
@@ -111,13 +113,13 @@ sleep 3
 echo "=== 6) tenant / endpoint（PG18） ==="
 # tenant create 会创建初始时间线并映射为 main；--pg-version 18 决定其版本
 # （timeline create 单独建 main 会与该初始时间线冲突：branch 已映射）
-T_OUT=$("$BIN/neon_local" tenant create --set-default --pg-version 18 2>&1 | tail -1)
+T_OUT=$("$BIN/neon_local" tenant create --set-default --pg-version "$SMOKE_PG_VERSION" 2>&1 | tail -1)
 echo "tenant create: $T_OUT"
 case "$T_OUT" in *"command failed"*) fail "tenant create 失败: $T_OUT";; esac
 TENANT=$("$BIN/neon_local" tenant list 2>/dev/null | grep -oE "[0-9a-f]{32}" | head -1)
 echo "tenant=$TENANT"
 [ -n "$TENANT" ] || fail "tenant 创建失败"
-EP_OUT=$("$BIN/neon_local" endpoint create main --tenant-id "$TENANT" --pg-version 18 2>&1 | tail -1)
+EP_OUT=$("$BIN/neon_local" endpoint create main --tenant-id "$TENANT" --pg-version "$SMOKE_PG_VERSION" 2>&1 | tail -1)
 echo "endpoint create: $EP_OUT"
 case "$EP_OUT" in *"command failed"*) fail "endpoint create 失败: $EP_OUT";; esac
 
