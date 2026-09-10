@@ -40,6 +40,11 @@
 | `scripts/pgxn-pg18-driver.sh` | 三阶段：PG18.2-fork pgxs 持久化构建 → communicator Rust 桥 → pgxn/neon C 编译错误收集 | docker + 缓存卷 |
 | `scripts/compute-smoke-pg18.sh` | 实装载冒烟：neon/pgxn 链安装进 fork PG18 → initdb → shared_preload → CREATE EXTENSION + SQL | pgxs-pg18-fork |
 | `scripts/full-path-smoke-pg18.sh` | Neon 存储全链路冒烟：neon_local 拓扑（storcon/ps/sk/endpoint）→ SQL | Rust 五件套 + pgxs-pg18-fork |
+| `scripts/full-path-smoke-qc.sh` | Linux 真机全链路冒烟（jtuser 运行、/usr/sbin/ss 端口检查、LD_LIBRARY_PATH 兜底） | 千橙/基础2 布局（§6 陷阱 19） |
+| `scripts/test-suite-qc.sh` | 22 断言功能套件 Linux 适配版（含 kill -9 崩溃恢复） | full-path-smoke-qc.sh 全绿后 |
+| `scripts/full-path-smoke-macos.sh` | macOS 原生全链路冒烟（SMOKE_PG_VERSION 参数化，v14~v18 矩阵） | mac-pg-install |
+| `scripts/test-suite-pg18.sh` | 22 断言功能套件 macOS 版 | full-path-smoke-macos.sh 全绿后 |
+| `scripts/benchmark-quadrant-macos.sh` | 四象限基准（macOS debug，仅相对值；Linux 正式数字见 ADR-015） | full-path-smoke-macos.sh |
 
 ## 5. 构建镜像
 
@@ -70,3 +75,8 @@ docker build -t "$JTDB_BUILD_IMAGE" -f Dockerfile.jtbuild .
 14. **ControlFileData 布局版本相关**：postgres_ffi 顶层 re-export 的是 v14 绑定；PG18 起结构有变（crc 偏移 292 vs 288），pageserver 导入 initdb 产物必须按 PG_VERSION 分派解码，否则 "invalid CRC in control file"。
 15. **data checksums 与 Neon 架构冲突（ADR-015 关键决策）**：fork initdb 默认 `data_checksums=true`，而 Neon 把"磁盘"上移到 pageserver——delta 应用/walredo 产出的页镜像 pd_checksum 是旧值（原版 PG 在 FlushBuffer→PageSetChecksumCopy 才计算），compute 读回校验必失败且失败页随机。修复=pageserver 在 GetPage 应答时对非全零页按 checksum_impl.h 算法（32 路 FNV-1a、pd_checksum 置零保留 pd_flags、混 blkno、(x%65535)+1）重算盖章；索引构建走 smgrextend 绕过 FlushBuffer，需在 neon_extend 的 lfc_write 前补盖章。上游 Neon 靠默认关闭校验和规避，此为 fork 校验和增强的必配项。
 16. **walredo 进程必须 io_method=sync**（PG18）：模拟 shmem 无 AIO worker 队列，默认 worker 下 vm_extend 读路径 AsyncReadBuffers→pgaio_io_acquire_nb 直接段错误；在 InitAuxiliaryProcess 后 SetConfigOption("io_method","sync") 强制。
+17. **Linux 后端扩展必须静态链 FRONTEND 版 libpq.a**（fork Makefile Linux 分支已处理，勿改回）：动态 libpq.so 在 postgres 进程内经平面命名空间被主程序的后端版 link-canary 插值，PQconnect 直接报 "libpq is incorrectly linked to backend functions"；同族问题还有编码函数（后端只导出 `pg_char_to_encoding_private` 等 `*_private` 版）——`pgxn/neon/neon_compat.c` 提供公共名转发 + 前端语义 canary（见子模块 6eb8bb6）。macOS 靠 two-level namespace 天然免疫，保持动态链。
+18. **zigbuild 交叉产物在老 binutils 上的 ar 长名表失效**：rustc 打包的 `.a` 长名表 CentOS 8 binutils 2.30 解析错位（符号明明在，ld 找不到成员，报 undefined symbol），千橙实证。修复=本机 `llvm-ar x` 解包后 `llvm-ar rcs` 重建标准 GNU 格式（binutils 2.35+ 无此问题，基础2 直接可用）。
+19. **云主机两道 ulimit/路径坑**（基础2 实证）：① fork PG 二进制 RUNPATH 硬编码构建机路径（`/root/jt/pg18/lib`），挪机后 initdb 报 libpq.so.5 找不到——`LD_LIBRARY_PATH=<部署>/pg18/lib` 兜底；② memlock 默认 64KB，tokio-epoll-uring 锁定内存不足导致 pageserver basebackup 无限重试（"not enough locked memory"）——`/etc/security/limits.d/*.conf` 给运行用户 `memlock 262144` 并重登会话。
+20. **cross-build 传输路径**：云主机间安全组默认不通（ICMP/HTTP 全拦），electerm SFTP 需 UI 手动开面板；**zmodem（rz）是最可靠通道**（走既有 SSH 会话，117M 实测无损）。zmodem 落盘位置是 SSH 会话当前目录（通常 $HOME）。MCP 命令通道单请求 ~64KB 上限，base64 注入只适合小文件。
+21. **neon_maxcombine 批量化实测否定**（2026-09-10，勿再试同款）：放开到 PG_IOV_MAX 让 read-stream 整批进单个 startreadv，seq scan 百万行 7 倍退化（28.7s vs 3.9s）——read-stream 在 HF_SYNCHRONOUS 下 lookahead 失效，批化放大整批同步阻塞。单块同步语义为当前架构实测最优；handle 级真异步需 communicator ring 共享化+独立接收线程（ADR-015 遗留）。A/B 全程冒烟+22 断言护航。
