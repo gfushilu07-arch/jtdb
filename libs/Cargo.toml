@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["jt-crypto-api", "jt-crypto-sm"]
+members = ["jt-crypto-api", "jt-crypto-sm", "jt-encrypted-object"]
 
 [workspace.package]
 version = "0.1.0"
@@ -9,3 +9,4 @@ license = "LicenseRef-JTDB-Proprietary"
 
 [workspace.dependencies]
 jt-crypto-api = { path = "jt-crypto-api" }
+jt-crypto-sm = { path = "jt-crypto-sm" }
