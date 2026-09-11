@@ -7,8 +7,10 @@
 pub mod error;
 pub mod header;
 pub mod object;
+pub mod stream;
 pub mod tlv;
 
 pub use error::ObjectError;
 pub use header::{Header, ObjectType, HEADER_SIZE};
 pub use object::{chunk_aad, chunk_nonce, ObjectReader, Writer, DEFAULT_CHUNK_SIZE, TAG_LEN};
+pub use stream::{decrypt_range, encrypt_stream, StreamMeta};
