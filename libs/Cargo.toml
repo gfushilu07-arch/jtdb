@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["jt-crypto-api", "jt-crypto-sm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-JTDB-Proprietary"
+
+[workspace.dependencies]
+jt-crypto-api = { path = "jt-crypto-api" }
