@@ -8,10 +8,12 @@
 # ============================================================================
 set -uo pipefail
 [ "$(whoami)" = "jtuser" ] || { echo "请以 jtuser 运行: su - jtuser -c 'bash $0'"; exit 1; }
-BIN=/root/jt/bin
-PGROOT=/root/jt/pg18
+SMOKE_PG_VERSION="${SMOKE_PG_VERSION:-18}"
+BIN=/home/jtuser/jt/bin
+PGROOT=/home/jtuser/jt/pgdistrib/v$SMOKE_PG_VERSION
 HOME_DIR=/home/jtuser/neonhome-qc
-export POSTGRES_DISTRIB_DIR=/root/jt/pgdistrib
+export POSTGRES_DISTRIB_DIR=/home/jtuser/jt/pgdistrib
+export LD_LIBRARY_PATH=$PGROOT/lib:${LD_LIBRARY_PATH:-}
 LOG=/tmp/neonhome-qc-smoke.log
 exec > >(tee "$LOG") 2>&1
 fail() { echo "FAIL: $*"; exit 1; }
@@ -100,13 +102,13 @@ curl -s -m 5 -X PUT http://127.0.0.1:1234/control/v1/safekeeper/1/scheduling_pol
 sleep 3
 
 echo "=== 6) tenant / endpoint（PG18） ==="
-T_OUT=$("$BIN/neon_local" tenant create --set-default --pg-version 18 2>&1 | tail -1)
+T_OUT=$("$BIN/neon_local" tenant create --set-default --pg-version "$SMOKE_PG_VERSION" 2>&1 | tail -1)
 echo "tenant create: $T_OUT"
 case "$T_OUT" in *"command failed"*) fail "tenant create 失败: $T_OUT";; esac
 TENANT=$("$BIN/neon_local" tenant list 2>/dev/null | grep -oE "[0-9a-f]{32}" | head -1)
 echo "tenant=$TENANT"
 [ -n "$TENANT" ] || fail "tenant 创建失败"
-EP_OUT=$("$BIN/neon_local" endpoint create main --tenant-id "$TENANT" --pg-version 18 2>&1 | tail -1)
+EP_OUT=$("$BIN/neon_local" endpoint create main --tenant-id "$TENANT" --pg-version "$SMOKE_PG_VERSION" 2>&1 | tail -1)
 echo "endpoint create: $EP_OUT"
 case "$EP_OUT" in *"command failed"*) fail "endpoint create 失败: $EP_OUT";; esac
 

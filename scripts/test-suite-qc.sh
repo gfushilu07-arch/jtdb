@@ -8,8 +8,10 @@
 set -uo pipefail
 [ "$(whoami)" = "jtuser" ] || { echo "请以 jtuser 运行"; exit 1; }
 RES=/home/jtuser/test-suite-qc.log
-PGROOT=/root/jt/pg18
-BIN=/root/jt/bin
+SMOKE_PG_VERSION="${SMOKE_PG_VERSION:-18}"
+PGROOT=/home/jtuser/jt/pgdistrib/v$SMOKE_PG_VERSION
+export LD_LIBRARY_PATH=$PGROOT/lib:${LD_LIBRARY_PATH:-}
+BIN=/home/jtuser/jt/bin
 PORT=55432
 HOME_DIR=/home/jtuser/neonhome-qc
 PSQL=( "$PGROOT/bin/psql" -h 127.0.0.1 -p $PORT -U cloud_admin -d postgres -v ON_ERROR_STOP=1 )
