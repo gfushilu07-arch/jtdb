@@ -85,6 +85,20 @@ pub trait SelfTest {
     fn self_test(&self) -> Result<(), CryptoError>;
 }
 
+/// 签名抽象（SM2，docs/04 §3.4 对象 trailer 签名）。
+/// 签名者持有私钥；验证者仅持公钥（组件证书链提供，docs/13）。
+pub trait SignatureKey {
+    /// 对消息签名，返回原始签名字节（SM2: r||s 各 32B）。
+    fn sign(&self, msg: &[u8]) -> Vec<u8>;
+    /// 签名者公钥字节（SM2 非压缩点：04||X||Y，65B）。
+    fn public_key(&self) -> Vec<u8>;
+}
+
+/// 验证者抽象。
+pub trait SignatureVerifier {
+    fn verify(&self, msg: &[u8], signature: &[u8]) -> bool;
+}
+
 /// 后端标识（装配与审计日志用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendKind {

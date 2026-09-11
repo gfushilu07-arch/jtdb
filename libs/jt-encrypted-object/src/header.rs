@@ -42,6 +42,9 @@ pub mod flags {
     pub const CHUNKED: u8 = 0b0000_0001;
     pub const METADATA_SIGNED: u8 = 0b0000_0010;
     pub const SEALED: u8 = 0b0000_0100;
+    /// JTDB 追加位（docs/04 §9 允许 v1 定义者扩展）：对象尾部携带 SM2 trailer 签名
+    /// （布局：u16 sig_len || signature，见 object.rs trailer 裁决）。
+    pub const TRAILER_SIGNED: u8 = 0b0000_1000;
 }
 
 /// 解码后的 Header 字段。

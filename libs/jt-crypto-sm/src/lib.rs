@@ -12,12 +12,14 @@
 pub mod api { pub use jt_crypto_api::*; }
 
 pub mod gcm;
+pub mod signer;
 pub mod kat;
 
 use jt_crypto_api::{Aead, BackendKind, CryptoBackend, CryptoError, Digest256, SelfTest};
 use zeroize::Zeroizing;
 
 pub use gcm::Sm4Gcm;
+pub use signer::{Sm2Signer, Sm2Verifier};
 pub use sm3_digest::Sm3Digest;
 
 pub mod sm3_digest {

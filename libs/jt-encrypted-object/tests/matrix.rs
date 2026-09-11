@@ -216,3 +216,67 @@ fn nonce_derivation_is_unique_per_chunk() {
     }
     assert_eq!(n1, expect);
 }
+
+// ---------- trailer 签名（SM2，docs/04 §3.4） ----------
+
+use jt_crypto_sm::{Sm2Signer, Sm2Verifier};
+use jt_crypto_api::SignatureVerifier as _;
+
+#[test]
+fn trailer_signed_roundtrip_and_verify() {
+    let aead = Sm4Gcm;
+    let dg = Sm3Digest;
+    let d = tmpdir();
+    let p = d.join("signed.obj");
+    let signer = Sm2Signer::generate().unwrap();
+    let w = Writer { backend: &aead, digest: &dg };
+    w.write_object_signed(
+        &p, ObjectType::Layer, tid(), oid(9), 7, 42, [b'N'; 12], &DEK,
+        b"signed payload", &[],
+        Some(&signer),
+    ).unwrap();
+
+    // flags 应置 TRAILER_SIGNED
+    let mut r = ObjectReader::open(&p, &aead, &dg, &DEK).unwrap();
+    assert_ne!(r.header.flags & 0b0000_1000, 0);
+    // 验签通过
+    assert!(r.verify_trailer(&Sm2Verifier::from_pk_bytes(&signer.public_key_bytes()).unwrap()).unwrap());
+    // 数据仍可读
+    assert_eq!(r.read_range(&aead, &DEK, 0, 14).unwrap(), b"signed payload");
+}
+
+#[test]
+fn trailer_tamper_detected() {
+    let aead = Sm4Gcm;
+    let dg = Sm3Digest;
+    let d = tmpdir();
+    let p = d.join("signed2.obj");
+    let signer = Sm2Signer::generate().unwrap();
+    let w = Writer { backend: &aead, digest: &dg };
+    w.write_object_signed(
+        &p, ObjectType::Layer, tid(), oid(9), 7, 42, [b'N'; 12], &DEK,
+        b"payload", &[], Some(&signer),
+    ).unwrap();
+
+    // 篡改签名内部字节（n-3 = sig 尾字节；n-2/n-1 是 sig_len 字段）
+    let mut raw = std::fs::read(&p).unwrap();
+    let n = raw.len();
+    raw[n - 3] ^= 0x01;
+    std::fs::write(&p, &raw).unwrap();
+    let mut r = ObjectReader::open(&p, &aead, &dg, &DEK).unwrap();
+    assert!(!r.verify_trailer(&Sm2Verifier::from_pk_bytes(&signer.public_key_bytes()).unwrap()).unwrap());
+}
+
+#[test]
+fn unsigned_object_has_no_trailer() {
+    let aead = Sm4Gcm;
+    let dg = Sm3Digest;
+    let d = tmpdir();
+    let p = d.join("unsigned.obj");
+    write_sample(&p, b"plain", &aead, &dg);
+    let mut r = ObjectReader::open(&p, &aead, &dg, &DEK).unwrap();
+    assert!(matches!(
+        r.verify_trailer(&Sm2Verifier::from_pk_bytes(&Sm2Signer::generate().unwrap().public_key_bytes()).unwrap()),
+        Err(ObjectError::Other("object has no trailer signature"))
+    ));
+}

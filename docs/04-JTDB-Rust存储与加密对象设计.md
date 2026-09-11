@@ -82,9 +82,10 @@ entry := type(u16) || len(u32) || value
 
 ```text
 signature = SM2_sign(node_key, header_digest || metadata_digest || last_chunk_tag)
+trailer 布局（2026-09-11 实现裁决）：signature(64B) || u16 sig_len（长度置尾）
 ```
 
-由写入节点组件证书签名，绑定"谁写的 + 内容是什么"；验签材料来自组件证书链（docs/13）。`flags.bit1=0` 时允许无签名（仅开发模式）。
+由写入节点组件证书签名，绑定"谁写的 + 内容是什么"；验签材料来自组件证书链（docs/13）。`flags.bit1=0` 时允许无签名（仅开发模式）。trailer 有无由 `flags.bit3=TRAILER_SIGNED`（v1 定义者追加位）承载；验签策略支持全量或抽样（首次加载+审计触发，§11.4）。
 
 ## 4. 分块与随机读
 
