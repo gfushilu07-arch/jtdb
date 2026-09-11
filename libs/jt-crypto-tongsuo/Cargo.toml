@@ -1,0 +1,11 @@
+[package]
+name = "jt-crypto-tongsuo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jt-crypto-api = { workspace = true }
+jt-crypto-sm = { workspace = true }
+openssl = "0.10"
+zeroize = "1"
