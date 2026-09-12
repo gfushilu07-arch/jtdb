@@ -10,7 +10,7 @@
 //! tag[c] 单独存表。Layer 的 index 记录的 blob offset（明文语义）无需换算。
 
 use crate::error::ObjectError;
-use jt_crypto_api::{Aead, CryptoError};
+use jt_crypto_api::Aead;
 
 /// 流元数据（与 header 字段对齐，docs/04 §3.1）。
 #[derive(Debug, Clone)]
@@ -40,6 +40,38 @@ impl StreamMeta {
 ///
 /// `plaintext` 为**加密区完整明文**（不含 ENC_START 之前的明文区）。
 /// 返回 (ciphertext（与 plaintext 等长）， tags（每 chunk 16B）)。
+/// 单 chunk AEAD 加密（流式包装器用：写边逐 chunk seal，不整流缓冲）。
+///
+/// `chunk_plain` 长度必须 ≤ chunk_size（尾 chunk 允许短）；返回 (密文（与明文等长）， tag 16B)。
+pub fn seal_chunk(
+    aead: &dyn Aead,
+    meta: &StreamMeta,
+    header_digest: &[u8; 32],
+    object_type_tag: u8,
+    key_epoch: u64,
+    generation: u64,
+    dek: &[u8],
+    chunk_index: u64,
+    chunk_plain: &[u8],
+) -> Result<(Vec<u8>, [u8; 16]), ObjectError> {
+    let ci = chunk_index;
+    let offset = meta.enc_start + ci * meta.chunk_size;
+    let nonce = meta.chunk_nonce(ci);
+    let mut aad = Vec::with_capacity(32 + 1 + 8 + 8 + 4 + 8 + 4);
+    aad.extend_from_slice(header_digest);
+    aad.push(object_type_tag);
+    aad.extend_from_slice(&key_epoch.to_le_bytes());
+    aad.extend_from_slice(&generation.to_le_bytes());
+    aad.extend_from_slice(&ci.to_le_bytes());
+    aad.extend_from_slice(&offset.to_le_bytes());
+    aad.extend_from_slice(&(chunk_plain.len() as u32).to_le_bytes());
+    let c = aead.seal(dek, &nonce, &aad, chunk_plain)?;
+    debug_assert_eq!(c.len(), chunk_plain.len() + 16);
+    let mut tag = [0u8; 16];
+    tag.copy_from_slice(&c[chunk_plain.len()..]);
+    Ok((c[..chunk_plain.len()].to_vec(), tag))
+}
+
 pub fn encrypt_stream(
     aead: &dyn Aead,
     meta: &StreamMeta,
