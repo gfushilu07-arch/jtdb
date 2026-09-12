@@ -42,7 +42,7 @@ impl std::error::Error for CryptoError {}
 ///
 /// 同一 key 下 nonce 严禁重用（调用方保证：对象格式由 base_nonce XOR
 /// chunk_index 派生，docs/04 §4.5 唯一性论证）。
-pub trait Aead {
+pub trait Aead: Send + Sync {
     /// 加密：返回 `ciphertext || tag`（tag 16 字节，追加在尾部）。
     ///
     /// `aad` 参与认证但不加密（docs/04 §4.3 AAD 布局）。
@@ -73,7 +73,7 @@ pub trait Aead {
 
 /// 摘要抽象（SM3，256-bit 输出）。用于 header_digest、metadata_digest、
 /// dek_scope_digest（docs/04 §3.1/§3.2/§6）。
-pub trait Digest256 {
+pub trait Digest256: Send + Sync {
     /// 单发摘要。流式场景（大对象）由实现方另行提供扩展 trait。
     fn digest(&self, data: &[u8]) -> [u8; 32];
 }
