@@ -92,6 +92,83 @@ impl Aead for TongsuoSm4Gcm {
     }
 }
 
+/// AES-128-GCM（EVP_aes_128_gcm）——**性能代理后端，禁入生产/密评**。
+///
+/// 用途：macOS（Apple Silicon 无 SM4 指令，软件 SM4 ≈ 76 MiB/s）上迭代存储
+/// 加密读路径的胶水（对齐读/LRU/chunk 切片）时，用接口参数完全一致
+/// （key 16B/nonce 12B/tag 16B）且硬件加速（AES 指令，GB/s 级）的 AES-128-GCM
+/// 顶替 SM4-GCM，使"加密层页读 vs 明文页读"的差距只剩胶水本身；密码成本
+/// 用 sm4_gcm_64k 微基准单独测并外推。自检为回环+篡改+错钥三重（dev 代理
+/// 不承担密评合规，不使用固定 KAT 向量）。
+#[derive(Debug, Default, Clone, Copy)]
+pub struct EvpAes128Gcm;
+
+impl Aead for EvpAes128Gcm {
+    fn seal(
+        &self,
+        key: &[u8],
+        nonce: &[u8],
+        aad: &[u8],
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
+        if key.len() != SM4_KEY_LEN {
+            return Err(CryptoError::InvalidInput("AES-128 key must be 16 bytes"));
+        }
+        if nonce.len() != GCM_NONCE_LEN {
+            return Err(CryptoError::InvalidInput("GCM nonce must be 12 bytes"));
+        }
+        let cipher = Cipher::fetch(None, "AES-128-GCM", None).map_err(map_err)?;
+        let mut ctx = CipherCtx::new().map_err(map_err)?;
+        ctx.encrypt_init(Some(&cipher), Some(key), Some(nonce)).map_err(map_err)?;
+        if !aad.is_empty() {
+            ctx.cipher_update(aad, None).map_err(map_err)?;
+        }
+        let mut out = vec![0u8; plaintext.len() + GCM_TAG_LEN];
+        let mut n = ctx.cipher_update(plaintext, Some(&mut out)).map_err(map_err)?;
+        let mut fin = [0u8; 16];
+        n += ctx.cipher_final(&mut fin).map_err(map_err)?;
+        out.truncate(n);
+        let mut tag = vec![0u8; GCM_TAG_LEN];
+        ctx.tag(&mut tag).map_err(map_err)?;
+        out.extend_from_slice(&tag);
+        Ok(out)
+    }
+
+    fn open(
+        &self,
+        key: &[u8],
+        nonce: &[u8],
+        aad: &[u8],
+        ciphertext_with_tag: &[u8],
+    ) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+        if ciphertext_with_tag.len() < GCM_TAG_LEN {
+            return Err(CryptoError::InvalidInput("ciphertext shorter than tag"));
+        }
+        let cipher = Cipher::fetch(None, "AES-128-GCM", None).map_err(map_err)?;
+        let mut ctx = CipherCtx::new().map_err(map_err)?;
+        ctx.decrypt_init(Some(&cipher), Some(key), Some(nonce)).map_err(map_err)?;
+        if !aad.is_empty() {
+            ctx.cipher_update(aad, None).map_err(map_err)?;
+        }
+        let split = ciphertext_with_tag.len() - GCM_TAG_LEN;
+        let (ct, tag) = ciphertext_with_tag.split_at(split);
+        let mut pt = Zeroizing::new(vec![0u8; ct.len() + GCM_TAG_LEN]);
+        let mut n = ctx.cipher_update(ct, Some(&mut pt)).map_err(map_err)?;
+        ctx.set_tag(tag).map_err(map_err)?;
+        ctx.cipher_final(&mut pt[n..]).map_err(map_err)?;
+        pt.truncate(n);
+        Ok(pt)
+    }
+
+    fn nonce_len(&self) -> usize {
+        GCM_NONCE_LEN
+    }
+
+    fn key_len(&self) -> usize {
+        SM4_KEY_LEN
+    }
+}
+
 /// SM3 摘要（EVP_sm3）。
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TongsuoSm3;
