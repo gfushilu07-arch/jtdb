@@ -72,6 +72,20 @@ impl RotationState {
             Retire => "retire",
         }
     }
+
+    /// 从字符串解析（KMS journal 持久化用）。
+    pub fn parse(s: &str) -> Option<Self> {
+        use RotationState::*;
+        match s {
+            "sealed" => Some(Sealed),
+            "prepare" => Some(Prepare),
+            "cutover" => Some(Cutover),
+            "drain" => Some(Drain),
+            "rekey" => Some(Rekey),
+            "retire" => Some(Retire),
+            _ => None,
+        }
+    }
 }
 
 /// 轮换错误。
@@ -136,6 +150,11 @@ impl RotationJournal {
 
     pub fn is_empty(&self) -> bool {
         self.entries.read().is_empty()
+    }
+
+    /// 全量快照（KMS/文件持久化用；顺序保持）。
+    pub fn snapshot(&self) -> Vec<JournalEntry> {
+        self.entries.read().clone()
     }
 }
 
