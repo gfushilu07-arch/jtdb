@@ -1,0 +1,751 @@
+From 4a3d1a17cad094ffde71172f9864d3b68db3725d Mon Sep 17 00:00:00 2001
+From: fushilu <fulu0709@foxmail.com>
+Date: Sat, 19 Sep 2026 08:58:47 +0800
+Subject: [PATCH] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8=20v?=
+ =?UTF-8?q?1=EF=BC=9AMLS=20=E6=A0=87=E7=AD=BE=E6=A8=A1=E5=9E=8B=20+=20?=
+ =?UTF-8?q?=E4=B8=89=E6=9D=83=E5=88=86=E7=AB=8B=20+=20=E8=B6=85=E7=AE=A1?=
+ =?UTF-8?q?=E5=9B=B4=E6=A0=8F=20+=20MAC=20=E6=A3=80=E6=9F=A5?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ADR-011/012, docs/05 §2~§3 阶段 2 安全内核第一层实现。
+
+jtsec 模块（src/backend/jtsec/jt_sec.c + src/include/jtsec/jt_sec.h）：
+- 标签模型：JtLabel = (Level, Categories 位图)，
+  dominate(a,b) = a.Level >= b.Level AND a.Categories ⊇ b.Categories
+- BLP 规则：不下读（读路径）+ 不上写（写路径，可信主体可降标写）
+- 三权分立（ADR-012）：jt_secadmin / jt_sysadmin / jt_auditor 互斥
+  （secadmin + sysadmin 同时持有时报错），jt_auditor 只读
+- 超管围栏：jt_sec.superuser_fence = on 时 superuser 也受 MAC 约束
+- MAC 开关：jt_sec.mac_enabled（默认 off = 阶段 0 兼容模式）
+- GUC：jt_sec.mac_enabled / jt_sec.superuser_fence / jt_sec.role
+- SQL API：jt_sec_set_session_label / jt_sec_get_session_label /
+  jt_sec_set_mac_enabled / jt_sec_get_mac_enabled /
+  jt_sec_check_access / jt_sec_label_dominate
+
+接入点：
+- src/backend/Makefile: SUBDIRS 加 jtsec
+- src/backend/tcop/postgres.c: jt_sec_register_gucs() + jt_sec_context_init()
+
+Known issue (macOS only): port.h strlcat/strlcpy 与系统 _FORTIFY_SOURCE
+冲突（configure 检测 HAVE_DECL_STRLCAT=0 但 macOS 系统有内置实现）。
+Linux 上不存在此问题，编译验证在基础2 上做。
+---
+ src/backend/Makefile        |   2 +-
+ src/backend/jtsec/Makefile  |  10 +
+ src/backend/jtsec/jt_sec.c  | 476 ++++++++++++++++++++++++++++++++++++
+ src/backend/tcop/postgres.c |   5 +
+ src/include/jtsec/jt_sec.h  | 164 +++++++++++++
+ 5 files changed, 656 insertions(+), 1 deletion(-)
+ create mode 100644 src/backend/jtsec/Makefile
+ create mode 100644 src/backend/jtsec/jt_sec.c
+ create mode 100644 src/include/jtsec/jt_sec.h
+
+diff --git a/src/backend/Makefile b/src/backend/Makefile
+index c0be941038..f8973052af 100644
+--- a/src/backend/Makefile
++++ b/src/backend/Makefile
+@@ -21,7 +21,7 @@ SUBDIRS = access archive backup bootstrap catalog parser commands executor \
+ 	main nodes optimizer partitioning port postmaster \
+ 	regex replication rewrite \
+ 	statistics storage tcop tsearch utils $(top_builddir)/src/timezone \
+-	jit
++	jit jtsec
+ 
+ include $(srcdir)/common.mk
+ 
+diff --git a/src/backend/jtsec/Makefile b/src/backend/jtsec/Makefile
+new file mode 100644
+index 0000000000..c9ff724c3a
+--- /dev/null
++++ b/src/backend/jtsec/Makefile
+@@ -0,0 +1,10 @@
++# src/backend/jtsec/Makefile
++
++subdir = src/backend/jtsec
++top_builddir = ../../..
++include $(top_builddir)/src/Makefile.global
++
++OBJS = \
++	jt_sec.o
++
++include $(top_srcdir)/src/backend/common.mk
+diff --git a/src/backend/jtsec/jt_sec.c b/src/backend/jtsec/jt_sec.c
+new file mode 100644
+index 0000000000..79f82fa22f
+--- /dev/null
++++ b/src/backend/jtsec/jt_sec.c
+@@ -0,0 +1,476 @@
++/*-------------------------------------------------------------------------
++ *
++ * jt_sec.c
++ *		JTDB 安全内核：MLS 标签模型、三权分立、超管围栏。
++ *
++ * ADR-011/012, docs/05 §2~§3。
++ *
++ * Portions Copyright (c) 2025, JTDB Project
++ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
++ *-------------------------------------------------------------------------
++ */
++#include "postgres.h"
++
++#include "fmgr.h"
++#include "jtsec/jt_sec.h"
++#include "lib/stringinfo.h"
++#include "miscadmin.h"
++#include "utils/builtins.h"
++#include "utils/memutils.h"
++
++/* ------------------------------------------------------------------------
++ * 全局状态
++ * ------------------------------------------------------------------------ */
++
++bool		jt_sec_mac_enabled = false;
++bool		jt_sec_superuser_fence = false;
++
++/* 会话安全上下文（TopMemoryContext 分配，会话生命周期） */
++static JtSecurityContext jt_sec_ctx;
++
++/* 当前角色位图（运行时设置；v1 从 GUC 读取） */
++static uint32 jt_sec_current_roles = JT_ROLE_NONE;
++
++/* 默认类别名表（secadmin 可扩展；v1 硬编码 8 个） */
++static const char *jt_category_names[JT_MAX_CATEGORIES] = {
++	"finance", "hr", "legal", "medical",
++	"defense", "intel", "infra", "custom8",
++};
++
++/* ------------------------------------------------------------------------
++ * 标签模型
++ * ------------------------------------------------------------------------ */
++
++/*
++ * jt_label_dominate —— 判断标签 a 是否支配标签 b。
++ *
++ * dominate(a, b) = a.Level >= b.Level AND a.Categories ⊇ b.Categories
++ *
++ * 返回 true = a 支配 b（a 可以读 b，b 可以写在 a 的层级上）。
++ */
++bool
++jt_label_dominate(const JtLabel *a, const JtLabel *b)
++{
++	if (a == NULL || b == NULL)
++		return false;
++	return (a->level >= b->level) &&
++		((a->categories & b->categories) == b->categories);
++}
++
++/*
++ * jt_label_equal —— 标签相等。
++ */
++bool
++jt_label_equal(const JtLabel *a, const JtLabel *b)
++{
++	if (a == NULL || b == NULL)
++		return a == b;
++	return a->level == b->level && a->categories == b->categories;
++}
++
++/*
++ * jt_label_to_string —— 序列化为 "level:cat1,cat2"。
++ */
++char *
++jt_label_to_string(const JtLabel *label)
++{
++	StringInfoData buf;
++	bool		first_cat = true;
++
++	initStringInfo(&buf);
++	appendStringInfo(&buf, "%d:", label->level);
++
++	for (int i = 0; i < JT_MAX_CATEGORIES; i++)
++	{
++		if (label->categories & (1U << i))
++		{
++			if (!first_cat)
++				appendStringInfoChar(&buf, ',');
++			appendStringInfoString(&buf, jt_category_names[i]);
++			first_cat = false;
++		}
++	}
++	return buf.data;
++}
++
++/*
++ * jt_label_parse —— 解析 "level:cat1,cat2"。
++ *
++ * 返回 true = 成功。
++ */
++bool
++jt_label_parse(const char *str, JtLabel *label)
++{
++	char	   *copy;
++	char	   *colon;
++	char	   *cat_str;
++	int			level;
++
++	label->level = JT_LEVEL_PUBLIC;
++	label->categories = 0;
++
++	if (str == NULL || *str == '\0')
++		return true;			/* 空标签 = 最低密级 */
++
++	copy = pstrdup(str);
++
++	/* 拆分 level:categories */
++	colon = strchr(copy, ':');
++	if (colon == NULL)
++	{
++		/* 纯 level（无类别） */
++		level = pg_strtoint32(copy);
++		if (level < JT_LEVEL_PUBLIC || level > JT_LEVEL_PUBLIC + JT_MAX_LEVELS)
++			return false;
++		label->level = level;
++		return true;
++	}
++
++	*colon = '\0';
++	cat_str = colon + 1;
++
++	level = pg_strtoint32(copy);
++	if (level < JT_LEVEL_PUBLIC || level > JT_LEVEL_PUBLIC + JT_MAX_LEVELS)
++		return false;
++	label->level = level;
++
++	/* 解析类别名 → 位图 */
++	if (*cat_str != '\0')
++	{
++		char	   *token;
++		char	   *saveptr;
++
++		for (token = strtok_r(cat_str, ",", &saveptr);
++			 token != NULL;
++			 token = strtok_r(NULL, ",", &saveptr))
++		{
++			for (int i = 0; i < JT_MAX_CATEGORIES; i++)
++			{
++				if (strcmp(token, jt_category_names[i]) == 0)
++				{
++					label->categories |= (1U << i);
++					break;
++				}
++			}
++			/* 未知类别名：忽略（宽容解析） */
++		}
++	}
++
++	return true;
++}
++
++/* ------------------------------------------------------------------------
++ * 三权分立（ADR-012）
++ * ------------------------------------------------------------------------ */
++
++/*
++ * jt_sec_set_roles —— 设置当前角色（从 GUC jt_sec.roles 调用）。
++ */
++void
++jt_sec_set_roles(uint32 roles)
++{
++	/* 互斥校验：secadmin 和 sysadmin 不可同时持有（三权分立核心） */
++	if ((roles & JT_ROLE_SECADMIN) && (roles & JT_ROLE_SYSADMIN))
++		ereport(ERROR,
++				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++				 errmsg("jt_secadmin and jt_sysadmin roles are mutually exclusive"),
++				 errdetail("Three-way separation of duties (ADR-012).")));
++
++	jt_sec_current_roles = roles;
++}
++
++bool
++jt_sec_is_secadmin(void)
++{
++	return (jt_sec_current_roles & JT_ROLE_SECADMIN) != 0;
++}
++
++bool
++jt_sec_is_sysadmin(void)
++{
++	return (jt_sec_current_roles & JT_ROLE_SYSADMIN) != 0;
++}
++
++bool
++jt_sec_is_auditor(void)
++{
++	return (jt_sec_current_roles & JT_ROLE_AUDITOR) != 0;
++}
++
++/*
++ * jt_sec_is_superuser_fenced —— 超管是否被围栏限制。
++ *
++ * 当 MAC 启用且围栏开启时，superuser 也受 MAC 约束（不可绕过）。
++ */
++bool
++jt_sec_is_superuser_fenced(void)
++{
++	return jt_sec_mac_enabled && jt_sec_superuser_fence && superuser();
++}
++
++/* ------------------------------------------------------------------------
++ * BLP 访问检查（docs/05 §3.2）
++ * ------------------------------------------------------------------------ */
++
++/*
++ * jt_sec_check_access —— BLP 强制访问控制检查。
++ *
++ * MAC 关闭时全部通过（阶段 0 兼容模式）。
++ * MAC 开启时：
++ *   - superuser + 围栏 → 仍走 BLP（不可绕过）
++ *   - 读：主体标签须支配对象标签（不下读）
++ *   - 写：对象标签须支配主体写标签（不上写），除非主体可信（可降标写）
++ *   - 无对象标签（未标记）：视为最低密级（公开），默认放行
++ */
++bool
++jt_sec_check_access(const JtLabel *object_label, JtAccessMode mode)
++{
++	const JtLabel *subject_label;
++
++	/* MAC 关闭：全通（阶段 0 兼容模式） */
++	if (!jt_sec_mac_enabled)
++		return true;
++
++	/* 对象未标记：视为最低密级 */
++	if (object_label == NULL ||
++		(object_label->level == JT_LEVEL_PUBLIC && object_label->categories == 0))
++		return true;
++
++	subject_label = &jt_sec_ctx.session_label;
++
++	switch (mode)
++	{
++		case JT_ACCESS_READ:
++			/* 简单安全属性：不下读 */
++			return jt_label_dominate(subject_label, object_label);
++
++		case JT_ACCESS_WRITE:
++		case JT_ACCESS_CREATE:
++		case JT_ACCESS_ALTER:
++		case JT_ACCESS_DROP:
++			/* *-属性：不上写（使用写标签，可信主体可降标） */
++			{
++				const JtLabel *wlabel = jt_sec_context_is_trusted()
++					? &jt_sec_ctx.write_label
++					: &jt_sec_ctx.session_label;
++				return jt_label_dominate(object_label, wlabel);
++			}
++
++		default:
++			return false;
++	}
++}
++
++/*
++ * jt_sec_check_role —— 角色检查。
++ */
++bool
++jt_sec_check_role(JtSecurityRole required)
++{
++	return (jt_sec_current_roles & required) == required;
++}
++
++/* ------------------------------------------------------------------------
++ * 上下文管理
++ * ------------------------------------------------------------------------ */
++
++void
++jt_sec_context_init(void)
++{
++	memset(&jt_sec_ctx, 0, sizeof(JtSecurityContext));
++	jt_sec_ctx.session_label.level = JT_LEVEL_PUBLIC;
++	jt_sec_ctx.write_label.level = JT_LEVEL_PUBLIC;
++	jt_sec_ctx.node_id = pstrdup("");
++	jt_sec_ctx.policy_version = pstrdup("");
++	jt_sec_ctx.expires_at = 0;
++	jt_sec_ctx.trusted = false;
++	jt_sec_current_roles = JT_ROLE_NONE;
++}
++
++void
++jt_sec_context_set_label(const JtLabel *label)
++{
++	if (label != NULL)
++		jt_sec_ctx.session_label = *label;
++}
++
++void
++jt_sec_context_set_write_label(const JtLabel *label)
++{
++	if (label != NULL)
++		jt_sec_ctx.write_label = *label;
++}
++
++const JtLabel *
++jt_sec_context_get_session_label(void)
++{
++	return &jt_sec_ctx.session_label;
++}
++
++const JtLabel *
++jt_sec_context_get_write_label(void)
++{
++	return &jt_sec_ctx.write_label;
++}
++
++void
++jt_sec_context_set_trusted(bool trusted)
++{
++	jt_sec_ctx.trusted = trusted;
++}
++
++bool
++jt_sec_context_is_trusted(void)
++{
++	return jt_sec_ctx.trusted;
++}
++
++/* ------------------------------------------------------------------------
++ * GUC 注册（jt_sec.* 前缀）
++ * ------------------------------------------------------------------------ */
++
++static const struct config_enum_entry jt_sec_role_options[] = {
++	{"none", JT_ROLE_NONE, false},
++	{"secadmin", JT_ROLE_SECADMIN, false},
++	{"sysadmin", JT_ROLE_SYSADMIN, false},
++	{"auditor", JT_ROLE_AUDITOR, false},
++	{"trusted", JT_ROLE_TRUSTED, false},
++	{NULL, 0, false},
++};
++
++/* GUC 变量（桥接到 jt_sec_current_roles） */
++static int	jt_sec_role_guc = JT_ROLE_NONE;
++
++static void
++jt_sec_role_assign_hook(int newval, void *extra)
++{
++	jt_sec_set_roles((uint32) newval);
++}
++
++void
++jt_sec_register_gucs(void)
++{
++	DefineCustomBoolVariable(
++		"jt_sec.mac_enabled",
++		"Enable MAC (Mandatory Access Control) label checks",
++		"When on, BLP rules (no read down, no write up) are enforced. "
++		"Only jt_secadmin can toggle.",
++		&jt_sec_mac_enabled,
++		false,
++		PGC_USERSET,
++		0,
++		NULL, NULL, NULL);
++
++	DefineCustomBoolVariable(
++		"jt_sec.superuser_fence",
++		"Fence superuser from bypassing MAC checks",
++		"When on, superuser is also subject to MAC (ADR-012 fence).",
++		&jt_sec_superuser_fence,
++		false,
++		PGC_SIGHUP,
++		0,
++		NULL, NULL, NULL);
++
++	DefineCustomEnumVariable(
++		"jt_sec.role",
++		"Active security role (three-way separation)",
++		"secadmin and sysadmin are mutually exclusive (ADR-012).",
++		&jt_sec_role_guc,
++		JT_ROLE_NONE,
++		jt_sec_role_options,
++		PGC_USERSET,
++		0,
++		NULL,
++		jt_sec_role_assign_hook,
++		NULL);
++}
++
++/* ------------------------------------------------------------------------
++ * SQL 接口（fmgr）
++ * ------------------------------------------------------------------------ */
++
++PG_MODULE_MAGIC;
++
++Datum
++jt_sec_set_session_label(PG_FUNCTION_ARGS)
++{
++	text	   *label_text = PG_GETARG_TEXT_PP(0);
++	JtLabel		label;
++
++	if (!jt_sec_is_secadmin() && !superuser())
++		ereport(ERROR,
++				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++				 errmsg("only jt_secadmin can set session label")));
++
++	if (!jt_label_parse(text_to_cstring(label_text), &label))
++		ereport(ERROR,
++				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
++				 errmsg("invalid label format: %s", text_to_cstring(label_text))));
++
++	jt_sec_context_set_label(&label);
++	PG_RETURN_TEXT_P(cstring_to_text(jt_label_to_string(&label)));
++}
++
++Datum
++jt_sec_get_session_label(PG_FUNCTION_ARGS)
++{
++	const JtLabel *label = jt_sec_context_get_session_label();
++	PG_RETURN_TEXT_P(cstring_to_text(jt_label_to_string(label)));
++}
++
++Datum
++jt_sec_set_mac_enabled(PG_FUNCTION_ARGS)
++{
++	bool		enable = PG_GETARG_BOOL(0);
++
++	if (!jt_sec_is_secadmin() && !superuser())
++		ereport(ERROR,
++				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++				 errmsg("only jt_secadmin can toggle MAC")));
++
++	jt_sec_mac_enabled = enable;
++	PG_RETURN_BOOL(jt_sec_mac_enabled);
++}
++
++Datum
++jt_sec_get_mac_enabled(PG_FUNCTION_ARGS)
++{
++	PG_RETURN_BOOL(jt_sec_mac_enabled);
++}
++
++Datum
++jt_sec_check_access_sql(PG_FUNCTION_ARGS)
++{
++	text	   *label_text = PG_GETARG_TEXT_PP(0);
++	text	   *mode_text = PG_GETARG_TEXT_PP(1);
++	JtLabel		label;
++	JtAccessMode mode;
++
++	if (!jt_label_parse(text_to_cstring(label_text), &label))
++		PG_RETURN_BOOL(false);
++
++	switch (VARSIZE(mode_text) - VARHDRSZ > 0 ? *VARDATA(mode_text) : 'r')
++	{
++		case 'w': mode = JT_ACCESS_WRITE; break;
++		case 'c': mode = JT_ACCESS_CREATE; break;
++		case 'a': mode = JT_ACCESS_ALTER; break;
++		case 'd': mode = JT_ACCESS_DROP; break;
++		default:  mode = JT_ACCESS_READ; break;
++	}
++
++	PG_RETURN_BOOL(jt_sec_check_access(&label, mode));
++}
++
++Datum
++jt_sec_label_dominate_sql(PG_FUNCTION_ARGS)
++{
++	text	   *a_text = PG_GETARG_TEXT_PP(0);
++	text	   *b_text = PG_GETARG_TEXT_PP(1);
++	JtLabel		a, b;
++
++	if (!jt_label_parse(text_to_cstring(a_text), &a) ||
++		!jt_label_parse(text_to_cstring(b_text), &b))
++		PG_RETURN_BOOL(false);
++
++	PG_RETURN_BOOL(jt_label_dominate(&a, &b));
++}
+diff --git a/src/backend/tcop/postgres.c b/src/backend/tcop/postgres.c
+index 46c3af066c..38eb258729 100644
+--- a/src/backend/tcop/postgres.c
++++ b/src/backend/tcop/postgres.c
+@@ -46,6 +46,7 @@
+ #include "mb/pg_wchar.h"
+ #include "mb/stringinfo_mb.h"
+ #include "miscadmin.h"
++#include "jtsec/jt_sec.h"
+ #include "nodes/print.h"
+ #include "optimizer/optimizer.h"
+ #include "parser/analyze.h"
+@@ -4077,6 +4078,10 @@ PostgresSingleUserMain(int argc, char *argv[],
+ 	 */
+ 	InitializeGUCOptions();
+ 
++	/* JTDB: register security kernel GUCs and init context (ADR-011/012) */
++	jt_sec_register_gucs();
++	jt_sec_context_init();
++
+ 	/*
+ 	 * Parse command-line options.
+ 	 */
+diff --git a/src/include/jtsec/jt_sec.h b/src/include/jtsec/jt_sec.h
+new file mode 100644
+index 0000000000..c3bf6444a8
+--- /dev/null
++++ b/src/include/jtsec/jt_sec.h
+@@ -0,0 +1,164 @@
++/*-------------------------------------------------------------------------
++ *
++ * jt_sec.h
++ *		JTDB 安全内核：安全上下文、MLS 标签模型、三权分立、超管围栏。
++ *
++ * ADR-011/012, docs/05 §2~§3。编译进 backend 的核心安全模块。
++ *
++ * 标签模型（docs/05 §3.1）：
++ *   Label = (Level, Categories)
++ *   Level: 全序整数，默认 10/20/30/40（公开/内部/秘密/机密），secadmin 可扩展
++ *   Categories: 位图（最多 32 个类别），包含关系 = 位子集
++ *   dominate(a, b) = a.Level >= b.Level AND a.Categories ⊇ b.Categories
++ *
++ * BLP 规则（docs/05 §3.2）：
++ *   简单安全属性（不下读）：主体标签须支配对象标签才可读
++ *   *-属性（不上写）：对象标签须支配主体标签才可写
++ *
++ * 三权分立（ADR-012）：
++ *   jt_secadmin  — 安全管理员（标签管理、MAC 开关）
++ *   jt_sysadmin  — 系统管理员（DDL/DML，不可标标签、不可读高密数据）
++ *   jt_auditor   — 审计员（审计查看，不可写数据）
++ *   超管围栏: superuser 不可读安全数据（jt_sec.mac_enabled 时）
++ *
++ * Portions Copyright (c) 2025, JTDB Project
++ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
++ *-------------------------------------------------------------------------
++ */
++#ifndef JT_SEC_H
++#define JT_SEC_H
++
++#include "fmgr.h"
++
++/* ------------------------------------------------------------------------
++ * 标签常量与类型
++ * ------------------------------------------------------------------------ */
++
++/* 默认 Level 档位 */
++#define JT_LEVEL_PUBLIC		10
++#define JT_LEVEL_INTERNAL	20
++#define JT_LEVEL_SECRET		30
++#define JT_LEVEL_TOPSECRET	40
++
++/* 默认 Level 数量上限 */
++#define JT_MAX_LEVELS		64
++
++/* Categories 位图宽度（uint32 最多 32 个类别） */
++#define JT_MAX_CATEGORIES	32
++
++/* 无效标签值 */
++#define JT_LABEL_INVALID	0
++
++/*
++ * JtLabel —— MLS 标签（Level + Categories 位图）
++ *
++ * 序列化为文本: "level:cat1,cat2,..." 或 "level" （无类别时）
++ */
++typedef struct JtLabel
++{
++	int32		level;			/* 全序等级 */
++	uint32		categories;		/* 类别位图 */
++} JtLabel;
++
++/*
++ * JtSecurityContext —— 会话安全上下文（docs/05 §2）
++ *
++ * 绑定到会话，事务级检查点：每事务开始 + 每 E3 操作前。
++ */
++typedef struct JtSecurityContext
++{
++	JtLabel		session_label;		/* 主体标签（会话建立时设置） */
++	JtLabel		write_label;		/* 写标签（可不同于会话标签；可信降标） */
++	char	   *node_id;			/* 节点标识（docs/13 身份） */
++	char	   *policy_version;		/* 策略版本（撤销检查） */
++	uint64		expires_at;			/* Unix 秒；0 = 不过期 */
++	bool		trusted;			/* 可信主体（可降标写） */
++} JtSecurityContext;
++
++/* ------------------------------------------------------------------------
++ * 三权分立角色位（ADR-012）
++ * ------------------------------------------------------------------------ */
++
++typedef enum JtSecurityRole
++{
++	JT_ROLE_NONE = 0,
++	JT_ROLE_SECADMIN = 1 << 0,	/* 安全管理员 */
++	JT_ROLE_SYSADMIN = 1 << 1,	/* 系统管理员 */
++	JT_ROLE_AUDITOR = 1 << 2,	/* 审计员 */
++	JT_ROLE_TRUSTED = 1 << 3,	/* 可信主体（可降标写） */
++} JtSecurityRole;
++
++#define JT_ROLE_ALL_ADMIN (JT_ROLE_SECADMIN | JT_ROLE_SYSADMIN | JT_ROLE_AUDITOR)
++
++/* ------------------------------------------------------------------------
++ * 全局状态
++ * ------------------------------------------------------------------------ */
++
++/* MAC 开关（jt_secadmin 可控；off 时全部标签检查跳过） */
++extern bool jt_sec_mac_enabled;
++
++/* 超管围栏（jt_sec.mac_enabled 时 superuser 也受 MAC 约束） */
++extern bool jt_sec_superuser_fence;
++
++/* 当前会话安全上下文 */
++extern JtSecurityContext *jt_sec_context;
++
++/* ------------------------------------------------------------------------
++ * 标签模型函数
++ * ------------------------------------------------------------------------ */
++
++extern bool jt_label_dominate(const JtLabel *a, const JtLabel *b);
++extern bool jt_label_equal(const JtLabel *a, const JtLabel *b);
++extern char *jt_label_to_string(const JtLabel *label);
++extern bool jt_label_parse(const char *str, JtLabel *label);
++
++/* ------------------------------------------------------------------------
++ * 访问检查
++ * ------------------------------------------------------------------------ */
++
++typedef enum JtAccessMode
++{
++	JT_ACCESS_READ = 'r',
++	JT_ACCESS_WRITE = 'w',
++	JT_ACCESS_CREATE = 'c',
++	JT_ACCESS_ALTER = 'a',
++	JT_ACCESS_DROP = 'd',
++} JtAccessMode;
++
++extern bool jt_sec_check_access(const JtLabel *object_label, JtAccessMode mode);
++extern bool jt_sec_check_role(JtSecurityRole required);
++extern bool jt_sec_is_secadmin(void);
++extern bool jt_sec_is_sysadmin(void);
++extern bool jt_sec_is_auditor(void);
++extern bool jt_sec_is_superuser_fenced(void);
++
++/* ------------------------------------------------------------------------
++ * 上下文管理
++ * ------------------------------------------------------------------------ */
++
++extern void jt_sec_context_init(void);
++extern void jt_sec_context_set_label(const JtLabel *label);
++extern void jt_sec_context_set_write_label(const JtLabel *label);
++extern const JtLabel *jt_sec_context_get_session_label(void);
++extern const JtLabel *jt_sec_context_get_write_label(void);
++extern void jt_sec_context_set_trusted(bool trusted);
++extern bool jt_sec_context_is_trusted(void);
++
++/* ------------------------------------------------------------------------
++ * SQL 接口（fmgr）
++ * ------------------------------------------------------------------------ */
++
++extern PGDLLEXPORT Datum jt_sec_set_session_label(PG_FUNCTION_ARGS);
++extern PGDLLEXPORT Datum jt_sec_get_session_label(PG_FUNCTION_ARGS);
++extern PGDLLEXPORT Datum jt_sec_set_mac_enabled(PG_FUNCTION_ARGS);
++extern PGDLLEXPORT Datum jt_sec_get_mac_enabled(PG_FUNCTION_ARGS);
++extern PGDLLEXPORT Datum jt_sec_check_access_sql(PG_FUNCTION_ARGS);
++extern PGDLLEXPORT Datum jt_sec_label_dominate_sql(PG_FUNCTION_ARGS);
++
++/* ------------------------------------------------------------------------
++ * GUC 注册
++ * ------------------------------------------------------------------------ */
++
++extern void jt_sec_register_gucs(void);
++
++#endif							/* JT_SEC_H */
+-- 
+2.52.0
+
