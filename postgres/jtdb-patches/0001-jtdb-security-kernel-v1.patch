@@ -1,8 +1,8 @@
 From 4a3d1a17cad094ffde71172f9864d3b68db3725d Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 08:58:47 +0800
-Subject: [PATCH] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8=20v?=
- =?UTF-8?q?1=EF=BC=9AMLS=20=E6=A0=87=E7=AD=BE=E6=A8=A1=E5=9E=8B=20+=20?=
+Subject: [PATCH 1/2] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8?=
+ =?UTF-8?q?=20v1=EF=BC=9AMLS=20=E6=A0=87=E7=AD=BE=E6=A8=A1=E5=9E=8B=20+=20?=
  =?UTF-8?q?=E4=B8=89=E6=9D=83=E5=88=86=E7=AB=8B=20+=20=E8=B6=85=E7=AE=A1?=
  =?UTF-8?q?=E5=9B=B4=E6=A0=8F=20+=20MAC=20=E6=A3=80=E6=9F=A5?=
 MIME-Version: 1.0
@@ -746,6 +746,38 @@ index 0000000000..c3bf6444a8
 +extern void jt_sec_register_gucs(void);
 +
 +#endif							/* JT_SEC_H */
+-- 
+2.52.0
+
+
+From f453ad0b15056adc2ce6f441fd368ec7731e9b81 Mon Sep 17 00:00:00 2001
+From: fushilu <fulu0709@foxmail.com>
+Date: Sat, 19 Sep 2026 09:21:29 +0800
+Subject: [PATCH 2/2] =?UTF-8?q?jt=5Fsec.c:=20=E8=A1=A5=E5=85=A8=20includes?=
+ =?UTF-8?q?=EF=BC=88guc=5Ftables.h/varatt.h=EF=BC=89=EF=BC=8C=E4=BF=AE?=
+ =?UTF-8?q?=E5=A4=8D=20PG18=20=E6=8B=86=E5=88=86=E5=A4=B4=E6=96=87?=
+ =?UTF-8?q?=E4=BB=B6?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/backend/jtsec/jt_sec.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/backend/jtsec/jt_sec.c b/src/backend/jtsec/jt_sec.c
+index 79f82fa22f..8fc329b60b 100644
+--- a/src/backend/jtsec/jt_sec.c
++++ b/src/backend/jtsec/jt_sec.c
+@@ -17,6 +17,8 @@
+ #include "miscadmin.h"
+ #include "utils/builtins.h"
+ #include "utils/memutils.h"
++#include "utils/guc_tables.h"
++#include "varatt.h"
+ 
+ /* ------------------------------------------------------------------------
+  * 全局状态
 -- 
 2.52.0
 
