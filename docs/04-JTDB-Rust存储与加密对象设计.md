@@ -150,6 +150,40 @@ Pageserver 页缓存命中时无解密；未命中时代价 = 1 chunk 解密（6
 - 段写满后：写 sealed header + trailer 签名，**临时名 `.part` → fsync(数据) → fsync(头) → 原子 rename**；
 - 已发布对象不可追加（chunk 不可变）；下一段 = 新对象（新 object_id）。
 
+### 5.1 已实现范围与两处实现期裁决（2026-09-20）
+
+**已实现**（`libs/jt-encrypted-object/src/wal.rs`，16 项测试）：
+
+- `WalSegWriter`：追加式写入，chunk 缓冲攒满即加密落盘；未满不落盘半块明文（崩溃即丢，走 Safekeeper 原生对端重拉）；
+- `seal_wal_segment` / `unseal_wal_segment`：**已完成段 ↔ 不可变对象**的转换（归档/卸载路径原语）；
+- 封段：trailer 签名 + `fsync` + 原子 `rename`（`.part` → 最终名）；已发布对象不可追加。
+
+**裁决 1：header 一次写定记"容量上界"，真实长度记在 metadata。**
+
+约束：`header_digest = SM3(0..98)` 且读取端自校验（§3.1），chunk 的 AAD 含 `header_digest`（§4.2）而 digest 覆盖 `chunk_count`/`payload_len`。故这两个字段**必须在加密第一个 chunk 之前确定、不可事后回填**。
+
+但段可能**未写满即封段**（如停机前最后一段）：若 header 的 `payload_len` 是容量而实际数据更少，读取端按容量读尾 chunk 会撞 `UnexpectedEof`（**实测缺陷**）。解法：metadata 用定宽 u64 记**真实**长度（`0x0010`/`0x0011`，finish 时原地更新——长度不变故不破坏布局），读取端优先采信真实值并校验 `≤` 容量上界（防御损坏 metadata 放大越界）。
+
+**裁决 2：封段信号由原子 `rename` 承载。** `.part` 存在 = 未封段（恢复时忽略）；rename 到最终名 = 已封段。与本节"fsync → 原子 rename"给出一致的崩溃语义，且无需改动 header（否则回到裁决 1 的矛盾）。
+
+### 5.2 活段文件加密（**待设计**，实现期确认的规格缺口）
+
+本节上文的"追加式对象"模型**不适用于 Safekeeper 的活段文件**，实测确认两点冲突：
+
+1. **偏移恒等**：活段预分配（`set_len(wal_seg_size)`）后按任意 `xlogoff` 写（`wal_storage.rs::write_in_segment` 会 seek），且对端按任意偏移并发读（`WalReader::open_segment` seek 到 `xlogoff`）。在偏移 0 放 130B 头会**移动全部 WAL 数据**，破坏 LSN↔偏移恒等——这是复制与恢复的基础。
+2. **flush 驱动**：Safekeeper 的持久性契约是"收到即 flush 并通告 `flush_lsn`"，对端会流式读**未写完的 `.partial` 段**（`open_wal_file` 优先打开 `.partial`）。64 KiB chunk 在攒满前无法封块、也就无法 flush，直接破坏提交延迟。
+
+**结论**：本节的对象模型对应**已完成、不可变的段**（§2 原则"对象不可变"），即**归档/卸载路径**（S3 上传、base backup、归档恢复）；该路径已按 §5.1 实现。**活段文件加密是另一条路径**，需满足：
+
+- (a) **密文与明文同偏移**（保持 LSN↔偏移恒等，头/tag 不得前置）；
+- (b) **每个 flush 边界可独立认证**（不能等 64 KiB chunk 攒满）；
+- (c) **对端能流式解密未写完的段**（`.partial` 语义不变）；
+- (d) AAD 至少绑定 `timeline_id / wal_segment / record_lsn / key_epoch / generation`（docs/02 §4.4）。
+
+**候选形态**（待密码专项评审）：按 WAL 页（8 KiB，PostgreSQL 原生边界）做独立 AEAD，tag 存**独立 tag 区**而非就地追加（保持同偏移）；段尾或独立元数据文件承载 header 与签名。该形态与 §3.1 的"对象"布局不同，需决定是新增 `object_type`（如 `WAL_LIVE_SEG`）还是走独立格式版本。
+
+**阻塞项**：本形态的 nonce 方案与 §3.1/§4.3 的"base_nonce 随机取自 DRBG"必须一并冻结（见 docs/16 §5.2 S2）；且 §9.4 的格式冻结前置条件（SM4 模式与 nonce 方案经密码专项评审）尚未满足。
+
 ## 6. 密钥封装（Key Envelope）
 
 ```text
