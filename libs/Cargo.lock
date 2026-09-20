@@ -134,6 +134,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "jt-common"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "jt-crypto-api"
 version = "0.1.0"
 dependencies = [

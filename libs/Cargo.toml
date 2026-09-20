@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["jt-crypto-api", "jt-crypto-sm", "jt-encrypted-object", "jt-crypto-tongsuo", "jt-key-epoch", "jt-storage-protocol"]
+members = ["jt-crypto-api", "jt-crypto-sm", "jt-encrypted-object", "jt-crypto-tongsuo", "jt-key-epoch", "jt-storage-protocol", "jt-common"]
 
 [workspace.package]
 version = "0.1.0"
