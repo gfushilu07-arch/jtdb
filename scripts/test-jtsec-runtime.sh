@@ -176,6 +176,28 @@ expect_err "COPY TO PROGRAM 被禁用"   "$ADMIN" "COPY public_tbl TO PROGRAM 'c
 # 普通用户不得开启白名单（PGC_SUSET）
 expect_err "普通用户不得开启逃逸白名单" low_u "SET jt_sec.allow_escape_paths=on" "ERROR|FATAL|permission"
 
+say "=== 10b. 大对象与 file_fdw 逃逸路径（§3.5 清单其余项）==="
+# 这两条在 PG 里**本来就没有权限门**（实测 lo_import/lo_export 对任意角色
+# 开放；file_fdw 只有 DBA 可控的角色门），故必须由内核统一把关。
+as "$ADMIN" "DROP FOREIGN TABLE IF EXISTS ft_esc;" >/dev/null 2>&1
+as "$ADMIN" "DROP FOREIGN TABLE IF EXISTS ft_esc_p;" >/dev/null 2>&1
+as "$ADMIN" "DROP FOREIGN TABLE IF EXISTS ft_esc_ok;" >/dev/null 2>&1
+expect_err "lo_import 被禁用（服务端文件读）" "$ADMIN" \
+  "SELECT lo_import('/tmp/jtsec-copy-src.txt');" "JT004|disabled"
+expect_err "lo_export 被禁用（服务端文件写）" "$ADMIN" \
+  "SELECT lo_export(0, '/tmp/jtsec-lo-out.txt');" "JT004|disabled"
+as "$ADMIN" "CREATE EXTENSION IF NOT EXISTS file_fdw;" >/dev/null 2>&1
+as "$ADMIN" "CREATE SERVER IF NOT EXISTS ffs_esc FOREIGN DATA WRAPPER file_fdw;" >/dev/null 2>&1
+expect_err "file_fdw filename 选项被禁用" "$ADMIN" \
+  "CREATE FOREIGN TABLE ft_esc(f text) SERVER ffs_esc OPTIONS (filename '/tmp/jtsec-copy-src.txt', format 'text');" "JT004|disabled"
+expect_err "file_fdw program 选项被禁用" "$ADMIN" \
+  "CREATE FOREIGN TABLE ft_esc_p(f text) SERVER ffs_esc OPTIONS (program 'echo hi', format 'text');" "JT004|disabled"
+# 受控放行：secadmin 开白名单后可用
+expect_ok  "开白名单后 lo_import 放行" "$ADMIN" \
+  "SET jt_sec.allow_escape_paths=on; SELECT lo_import('/tmp/jtsec-copy-src.txt');"
+expect_ok  "开白名单后 file_fdw 可用" "$ADMIN" \
+  "SET jt_sec.allow_escape_paths=on; CREATE FOREIGN TABLE ft_esc_ok(f text) SERVER ffs_esc OPTIONS (filename '/tmp/jtsec-copy-src.txt', format 'text');"
+
 say "=== 11. 统一错误码（docs/05 §6.2）==="
 # 客户端/审计采集器应能按 SQLSTATE 稳定识别 MAC 拒绝，而不必解析文本
 code=$("$RT/bin/psql" -h /tmp -p $P -U low_u -d $DB -X 2>&1 <<'SQLEOF' | grep -oE "JT[0-9]{3}" | head -1
