@@ -96,13 +96,24 @@
 
 | # | 缺口 | 作用 | 证据 |
 |---|---|---|---|
-| S1 | **WAL 加密** | 只加密 Layer 而 WAL 明文 = 加密承诺残缺：写前日志含全部数据变更。Safekeeper 侧零改造 | `safekeeper/src/` 无 `jt_encrypted_object` 引用；docs/04 §5 WAL 追加语义无实现 |
+| S1 | **WAL 加密**（进行中） | 只加密 Layer 而 WAL 明文 = 加密承诺残缺：写前日志含全部数据变更 | **libs 层已实现**：`libs/jt-encrypted-object/src/wal.rs`（追加式 `WalSegWriter` + `seal_wal_segment`/`unseal_wal_segment`，16/16 绿）。**活段文件仍未加密**——见下方 §5.2.1 的架构裁决 |
 | S2 | **nonce 方案与格式冻结** | `base_nonce` 实际由**文件名派生**（`SM3("jtdev-nonce:"‖timeline‖filename)`），与 docs/04 §3.1 / docs/12 §4.4 规定的"每对象随机取自 DRBG"不一致；同一文件重写复用 nonce，是 rekey/加密擦除隐患。docs/04 §9.4 冻结前置条件未闭环 | `pageserver/src/storage_encryption.rs` 派生逻辑 |
 | S3 | **BranchKeyGrant** | ADR-014 分支授权：分支只能解密到分支点、epoch ≤ max_epoch | `services/jt-kms` grep 零命中（协议层 `libs/jt-storage-protocol` 已实现 `authorizes()`） |
 | S4 | DRBG 与随机数治理 | TCM DRBG > 密码卡/HSM > OS CSPRNG 分级 + `rng_source` 标记 + 软件回退时 KMS 拒发新 DEK | 仅 OS CSPRNG 一级；无 DRBG 实例 |
 | S5 | compaction/GC 与 `jtdb rekey` | 重加密时新旧对象并存、引用计数删除 | 无 |
 | S6 | 签名 Manifest | §4.7 对象清单签名（防回滚计数器已有） | 无 |
 | S7 | 对象 nonce 重放/搬移测试 | 重放旧 generation 对象、`wrapped_dek` 搬移到其他对象 | 矩阵 11 项未覆盖 |
+
+#### 5.2.1 WAL 加密的架构裁决（实现期确认，重要）
+
+docs/04 §5 把 WAL 段对象描述为"追加式、64 KiB chunk 攒满即加密追加"。把它直接套在 **Safekeeper 活段文件**上会与既有架构冲突，实测确认两点：
+
+1. **偏移恒等**：Safekeeper 活段预分配（`set_len(wal_seg_size)`）后按任意 `xlogoff` 写（`wal_storage.rs::write_in_segment` 会 seek），且对端按任意偏移并发读（`WalReader::open_segment` seek 到 `xlogoff`）。在偏移 0 放 130B 头会**移动全部 WAL 数据**，破坏 LSN↔偏移恒等——这是复制与恢复的基础。
+2. **flush 驱动**：Safekeeper 的持久性契约是"收到即 flush 并通告 `flush_lsn`"，且对端会流式读**未写完的 `.partial` 段**（`open_wal_file` 优先打开 `.partial`）。64 KiB chunk 在攒满前无法封块、也就无法 flush，直接破坏提交延迟。
+
+**结论**：docs/04 §5 的对象模型对应**已完成、不可变的段**（docs/04 §2 原则"对象不可变"）——即**归档/卸载路径**（S3 上传、base backup、归档恢复），与 docs/02 §4.4 把"归档恢复、base backup"列入覆盖一致。本仓已实现该路径原语（`seal_wal_segment`/`unseal_wal_segment`）。
+
+**活段文件加密是另一条路径**，需单独设计：要求页级/记录级加密（或对 WAL 页做独立 AEAD），且必须满足 (a) 密文与明文同偏移（保持 LSN↔偏移恒等）、(b) 每个 flush 边界可独立认证、(c) 对端能流式解密未写完的段。**docs/04 §5 未描述此形态，属规格缺口**（见 §5.7），需补设计后实施。
 
 ### 5.3 身份引导（完全缺失，阶段 2/3）
 

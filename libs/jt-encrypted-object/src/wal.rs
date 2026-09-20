@@ -336,6 +336,91 @@ fn part_path_of(path: &Path) -> PathBuf {
     PathBuf::from(s)
 }
 
+// ---------------------------------------------------------------------------
+// 段 ↔ 对象 转换（WAL 段对象在存储层的使用位置，见下方说明）
+// ---------------------------------------------------------------------------
+
+/// 把一段**已完成的 WAL 段**（整段明文）封成加密对象。
+///
+/// # 为什么是这个形状（实现期裁决，重要）
+///
+/// docs/04 §5 描述 WAL 段对象"追加式、chunk 攒满即加密追加"。但把该模型
+/// 直接套在 **Safekeeper 活段文件**上会与既有架构冲突，实测确认两点：
+///
+/// 1. **偏移恒等**：Safekeeper 的活段预分配（`set_len(wal_seg_size)`）后按
+///    任意 `xlogoff` 写（`write_in_segment` 会 seek），且对端按任意偏移并发
+///    读（`WalReader::open_segment` seek 到 xlogoff）。在偏移 0 放 130B 头会
+///    **移动全部 WAL 数据**，破坏 LSN↔偏移恒等——这是复制与恢复的基础。
+/// 2. **flush 驱动**：Safekeeper 的持久性契约是"收到即 flush 并通告
+///    flush_lsn"，而对端会流式读**未写完的 `.partial` 段**（`open_wal_file`
+///    优先打开 `.partial`）。64 KiB chunk 在攒满前无法封块、也就无法 flush，
+///    直接破坏提交延迟。
+///
+/// 故 docs/04 §5 的对象模型对应的是**已完成、不可变的段**（docs/04 §2
+/// 原则"对象不可变"）——即**归档/卸载路径**（S3 上传、base backup、归档
+/// 恢复），与 docs/02 §4.4 把"归档恢复、base backup"列入覆盖一致。
+/// 活段文件的页级/记录级加密是另一条路径，需单独设计（本模块不假装覆盖）。
+///
+/// 本函数即该归档路径的原语：整段已知 → 一次封成对象（复用 [`WalSegWriter`]
+/// 的布局与签名，保证与读取端一致）。
+pub fn seal_wal_segment<'a>(
+    aead: &'a dyn Aead,
+    digest: &'a dyn Digest256,
+    path: &Path,
+    timeline_id: [u8; 16],
+    object_id: [u8; 16],
+    key_epoch: u64,
+    generation: u64,
+    base_nonce: [u8; 12],
+    dek: &[u8],
+    segment: &[u8],
+    lsn_start: u64,
+    signer: Option<&'a dyn SignatureKey>,
+) -> Result<WalSegStats, ObjectError> {
+    // 段长即容量（归档时整段已知，无"未写满"情形）
+    let capacity = segment.len() as u64;
+    let mut w = WalSegWriter::create(
+        aead,
+        digest,
+        path,
+        timeline_id,
+        object_id,
+        key_epoch,
+        generation,
+        base_nonce,
+        dek,
+        capacity.max(1),
+        &[Entry::new(TLV_LSN_RANGE_ENTRY, lsn_start.to_le_bytes().to_vec())],
+        signer,
+    )?;
+    w.append(segment)?;
+    w.finish()
+}
+
+/// 解出**整段明文**（归档恢复用：把对象还原为 WAL 段字节）。
+///
+/// 与 [`seal_wal_segment`] 对称。返回 (明文段字节, 段起始 LSN 若 metadata 含之)。
+pub fn unseal_wal_segment(
+    path: &Path,
+    backend: &dyn Aead,
+    digest: &dyn Digest256,
+    dek: &[u8],
+) -> Result<(Vec<u8>, Option<u64>), ObjectError> {
+    let mut r = crate::object::ObjectReader::open(path, backend, digest, dek)?;
+    let len = r.payload_len() as usize;
+    let plain = r.read_range(backend, dek, 0, len)?;
+    let lsn_start = r
+        .metadata_entries()
+        .iter()
+        .find(|e| e.tlv_type == TLV_LSN_RANGE_ENTRY && e.value.len() == 8)
+        .map(|e| u64::from_le_bytes(e.value[..8].try_into().unwrap()));
+    Ok((plain, lsn_start))
+}
+
+/// TLV 类型：段起始 LSN（与 [`crate::tlv::tlv_type::LSN_RANGE`] 同值，此处用具名别名
+/// 以便本模块自述其用途）。
+pub const TLV_LSN_RANGE_ENTRY: u16 = crate::tlv::tlv_type::LSN_RANGE;
+
 /// 构造 130B 头字节（主字段 0..98 + header_digest 98..130）。
 ///
 /// 字段布局与 [`crate::object::Writer::write_object_signed`] **必须逐字段

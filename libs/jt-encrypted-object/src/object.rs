@@ -339,6 +339,11 @@ impl ObjectReader {
         self.header.payload_len
     }
 
+    /// metadata 条目（调用方按 TLV 类型取用，如 LSN 范围）。
+    pub fn metadata_entries(&self) -> &[Entry] {
+        &self.metadata
+    }
+
     /// 对象真实 chunk 数（同 [`Self::payload_len`] 的口径）。
     pub fn chunk_count(&self) -> u64 {
         self.header.chunk_count

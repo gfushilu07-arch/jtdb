@@ -341,3 +341,107 @@ fn wrong_key_fails_to_open() {
         ),
     }
 }
+
+// ---------------------------------------------------------------------------
+// 段 ↔ 对象 转换（归档路径：已完成段封成不可变对象，再还原）
+// ---------------------------------------------------------------------------
+
+#[test]
+fn seal_then_unseal_segment_roundtrip() {
+    use jt_encrypted_object::wal::{seal_wal_segment, unseal_wal_segment};
+
+    let dir = tmpdir("sealrt");
+    let path = dir.join("000000010000000000000001");
+
+    // 一整段明文（模拟已完成的 WAL 段；大小含尾块不满的情形）
+    let seg: Vec<u8> = (0..(DEFAULT_CHUNK_SIZE as usize + 777))
+        .map(|i| (i % 256) as u8)
+        .collect();
+    let lsn_start = 0x16B_0000u64;
+
+    let stats = seal_wal_segment(
+        &Sm4Gcm,
+        &Sm3Digest,
+        &path,
+        TL,
+        OBJ,
+        3,
+        1,
+        NONCE,
+        &dek(),
+        &seg,
+        lsn_start,
+        None,
+    )
+    .unwrap();
+    assert_eq!(stats.payload_len, seg.len() as u64, "整段归档：真实长度=段长");
+    assert_eq!(stats.chunk_count, 2, "1 整块 + 1 尾块");
+
+    let (plain, got_lsn) = unseal_wal_segment(&path, &Sm4Gcm, &Sm3Digest, &dek()).unwrap();
+    assert_eq!(plain, seg, "还原的段字节须与原始逐字节一致");
+    assert_eq!(got_lsn, Some(lsn_start), "段起始 LSN 须随对象保存");
+}
+
+#[test]
+fn sealed_segment_object_is_self_describing() {
+    use jt_encrypted_object::wal::{seal_wal_segment, unseal_wal_segment};
+
+    let dir = tmpdir("selfdesc");
+    let path = dir.join("seg_obj");
+
+    // 段未写满容量：对象须自描述真实长度，读取端无需外部告知
+    let seg = vec![0x5A; 1234];
+    seal_wal_segment(
+        &Sm4Gcm, &Sm3Digest, &path, TL, OBJ, 1, 1, NONCE, &dek(), &seg, 0, None,
+    )
+    .unwrap();
+
+    let r = open_seg(&path);
+    assert_eq!(r.payload_len(), 1234, "真实长度来自 metadata（自描述）");
+
+    let (plain, _) = unseal_wal_segment(&path, &Sm4Gcm, &Sm3Digest, &dek()).unwrap();
+    assert_eq!(plain.len(), 1234);
+    assert_eq!(plain, seg);
+}
+
+#[test]
+fn sealed_segment_detects_tampering() {
+    use jt_encrypted_object::wal::{seal_wal_segment, unseal_wal_segment};
+
+    let dir = tmpdir("sealtamper");
+    let path = dir.join("seg_obj");
+    let seg = vec![0x11; 5000];
+    seal_wal_segment(
+        &Sm4Gcm, &Sm3Digest, &path, TL, OBJ, 1, 1, NONCE, &dek(), &seg, 0, None,
+    )
+    .unwrap();
+
+    // 翻转数据区一字节 → 还原必须失败
+    let mut bytes = std::fs::read(&path).unwrap();
+    let metadata_len = u32::from_le_bytes(bytes[14..18].try_into().unwrap()) as usize;
+    bytes[HEADER_SIZE + metadata_len] ^= 0x01;
+    std::fs::write(&path, &bytes).unwrap();
+
+    assert!(
+        unseal_wal_segment(&path, &Sm4Gcm, &Sm3Digest, &dek()).is_err(),
+        "篡改的段对象不得还原"
+    );
+}
+
+#[test]
+fn sealed_segment_rejects_wrong_dek() {
+    use jt_encrypted_object::wal::{seal_wal_segment, unseal_wal_segment};
+
+    let dir = tmpdir("sealwrongkey");
+    let path = dir.join("seg_obj");
+    seal_wal_segment(
+        &Sm4Gcm, &Sm3Digest, &path, TL, OBJ, 1, 1, NONCE, &dek(),
+        &vec![7u8; 300], 0, None,
+    )
+    .unwrap();
+
+    assert!(
+        unseal_wal_segment(&path, &Sm4Gcm, &Sm3Digest, &vec![0xEE; 16]).is_err(),
+        "错误 DEK 不得还原段对象"
+    );
+}

@@ -15,4 +15,7 @@ pub use error::ObjectError;
 pub use header::{Header, ObjectType, HEADER_SIZE};
 pub use object::{chunk_aad, chunk_nonce, ObjectReader, Writer, DEFAULT_CHUNK_SIZE, TAG_LEN};
 pub use stream::{decrypt_range, encrypt_stream, StreamMeta};
-pub use wal::{WalSegStats, WalSegWriter, TLV_REAL_CHUNK_COUNT, TLV_REAL_PAYLOAD_LEN};
+pub use wal::{
+    seal_wal_segment, unseal_wal_segment, WalSegStats, WalSegWriter, TLV_REAL_CHUNK_COUNT,
+    TLV_REAL_PAYLOAD_LEN,
+};
