@@ -217,7 +217,7 @@ impl ObjectReader {
         let mut f = std::fs::File::open(path)?;
         let mut head = vec![0u8; HEADER_SIZE];
         f.read_exact(&mut head)?;
-        let header = Header::decode(&head, digest)?;
+        let mut header = Header::decode(&head, digest)?;
         if header.flags & flags::SEALED == 0 {
             return Err(ObjectError::NotSealed);
         }
@@ -227,6 +227,29 @@ impl ObjectReader {
         let metadata = tlv::decode(&meta)?;
         let metadata_digest = digest.digest(&meta);
         let body_offset = (HEADER_SIZE + metadata_len) as u64;
+
+        /*
+         * 追加式对象（WAL 段）：header 记的是**容量上界**（见 crate::wal
+         * 裁决 1），真实长度在 metadata。段可能未写满即封段，故必须以
+         * metadata 的真实值覆盖 header 的容量值——否则读取端会按容量去读
+         * 尾 chunk，撞 UnexpectedEof（实现期实测缺陷）。
+         *
+         * 仅在真实值存在且 ≤ 容量时采信（防御损坏的 metadata 把长度放大
+         * 到越界）。
+         */
+        for e in &metadata {
+            if e.tlv_type == crate::wal::TLV_REAL_PAYLOAD_LEN && e.value.len() == 8 {
+                let real = u64::from_le_bytes(e.value[..8].try_into().unwrap());
+                if real <= header.payload_len {
+                    header.payload_len = real;
+                }
+            } else if e.tlv_type == crate::wal::TLV_REAL_CHUNK_COUNT && e.value.len() == 8 {
+                let real = u64::from_le_bytes(e.value[..8].try_into().unwrap());
+                if real <= header.chunk_count {
+                    header.chunk_count = real;
+                }
+            }
+        }
 
         let _ = (backend, dek);
         Ok(ObjectReader {
@@ -308,6 +331,19 @@ impl ObjectReader {
     }
 
     /// 读一页（docs/04 §4.4）：offset 为明文内字节偏移；跨 chunk 自动续读。
+    /// 对象真实明文长度。
+    ///
+    /// 对追加式对象（WAL 段）为 metadata 里的真实值；对一次写成的对象
+    /// 即 header 的 payload_len（两者一致）。
+    pub fn payload_len(&self) -> u64 {
+        self.header.payload_len
+    }
+
+    /// 对象真实 chunk 数（同 [`Self::payload_len`] 的口径）。
+    pub fn chunk_count(&self) -> u64 {
+        self.header.chunk_count
+    }
+
     pub fn read_range(
         &mut self,
         backend: &dyn Aead,
