@@ -17,7 +17,8 @@
 #   §5 三权分立（ADR-012）
 #   §6 BLP 读路径（不下读）
 #   §7 BLP 写路径（* 属性：向上写允许 / 向下写禁止）
-#   §8 超管围栏（ADR-012：围栏下 superuser 不再构成管理权限）
+#   §8 COPY/TRUNCATE 执行点
+#   §9 超管围栏（ADR-012：围栏下 superuser 不再构成管理权限）
 #
 # 用法: source scripts/env.sh && bash scripts/test-jtsec-runtime.sh
 set -u
@@ -124,7 +125,32 @@ expect_ok  "高密主体读公开表放行（向下读允许）" "$ADMIN" \
   "SET jt_sec.role='secadmin'; SELECT jt_sec_set_session_label('30:finance'); SELECT count(*) FROM public_tbl;"
 
 # ---------------------------------------------------------------------------
-say "=== 8. 超管围栏（ADR-012）==="
+say "=== 8. COPY / TRUNCATE 执行点（不经 ExecutorStart 的写路径）==="
+# copyfrom.c 自建 ModifyTableState 直接调 table AM，不经 ExecutorStart；
+# TRUNCATE 是 utility 语句同样不经 ModifyTable。二者曾完全漏检（实测高密
+# 会话可 COPY FROM 写低密表、TRUNCATE 清空低密表）。
+as "$ADMIN" "CREATE TABLE pub_copy(id int);" >/dev/null 2>&1
+as "$ADMIN" "SECURITY LABEL FOR jt ON TABLE pub_copy IS '10:';" >/dev/null 2>&1
+as "$ADMIN" "GRANT ALL ON pub_copy TO low_u;" >/dev/null 2>&1
+as "$ADMIN" "GRANT pg_read_server_files TO low_u, $ADMIN;" >/dev/null 2>&1
+printf '5\n' > /tmp/jtsec-copy-src.txt
+"$RT/bin/psql" -h /tmp -p $P -U "$ADMIN" -d $DB -X -q -t -A \
+  -c "COPY pub_copy FROM '/tmp/jtsec-copy-src.txt';" >/dev/null 2>&1
+# 向下写：高密会话写低密表 → 全拒
+expect_err "COPY FROM 向下写被拒" "$ADMIN" \
+  "SET jt_sec.role='secadmin'; SELECT jt_sec_set_session_label('30:finance'); COPY pub_copy FROM '/tmp/jtsec-copy-src.txt';" "MAC: write denied"
+expect_err "TRUNCATE 向下写被拒" "$ADMIN" \
+  "SET jt_sec.role='secadmin'; SELECT jt_sec_set_session_label('30:finance'); TRUNCATE pub_copy;" "MAC: write denied"
+# 向下读：放行
+expect_ok  "COPY TO 向下读放行" "$ADMIN" \
+  "SET jt_sec.role='secadmin'; SELECT jt_sec_set_session_label('30:finance'); COPY pub_copy TO '/tmp/jtsec-copy-out.txt';"
+# 向上写：低密主体 COPY FROM 高密表 → 放行（与 INSERT 一致，追加不读既有行）
+expect_ok  "COPY FROM 向上写放行" low_u "COPY secret_tbl FROM '/tmp/jtsec-copy-src.txt';"
+# 不下读：低密主体 COPY TO 高密表 → 拒
+expect_err "COPY TO 读高密表被拒" low_u "COPY secret_tbl TO '/tmp/jtsec-copy-out2.txt';" "MAC: read denied"
+
+# ---------------------------------------------------------------------------
+say "=== 9. 超管围栏（ADR-012）==="
 # 围栏开启 + MAC 开启 → superuser 不再构成管理权限（只认 jt_secadmin）
 expect_err "围栏下 superuser 不得自提会话标签" "$ADMIN" "SELECT jt_sec_set_session_label('30:finance')" "fenced|only jt_secadmin"
 expect_err "围栏下 superuser 不得设写标签"     "$ADMIN" "SELECT jt_sec_set_write_label('30:finance')" "only jt_secadmin"

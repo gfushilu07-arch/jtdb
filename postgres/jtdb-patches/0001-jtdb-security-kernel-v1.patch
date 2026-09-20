@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 08:58:47 +0800
-Subject: [PATCH 1/7] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8?=
+Subject: [PATCH 1/8] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8?=
  =?UTF-8?q?=20v1=EF=BC=9AMLS=20=E6=A0=87=E7=AD=BE=E6=A8=A1=E5=9E=8B=20+=20?=
  =?UTF-8?q?=E4=B8=89=E6=9D=83=E5=88=86=E7=AB=8B=20+=20=E8=B6=85=E7=AE=A1?=
  =?UTF-8?q?=E5=9B=B4=E6=A0=8F=20+=20MAC=20=E6=A3=80=E6=9F=A5?=
@@ -750,7 +750,7 @@ index 0000000000..c3bf6444a8
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 09:21:29 +0800
-Subject: [PATCH 2/7] =?UTF-8?q?jt=5Fsec.c:=20=E8=A1=A5=E5=85=A8=20includes?=
+Subject: [PATCH 2/8] =?UTF-8?q?jt=5Fsec.c:=20=E8=A1=A5=E5=85=A8=20includes?=
  =?UTF-8?q?=EF=BC=88guc=5Ftables.h/varatt.h=EF=BC=89=EF=BC=8C=E4=BF=AE?=
  =?UTF-8?q?=E5=A4=8D=20PG18=20=E6=8B=86=E5=88=86=E5=A4=B4=E6=96=87?=
  =?UTF-8?q?=E4=BB=B6?=
@@ -779,7 +779,7 @@ index 79f82fa22f..8fc329b60b 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 13:00:38 +0800
-Subject: [PATCH 3/7] =?UTF-8?q?=E5=90=8C=E6=AD=A5=E5=9F=BA=E7=A1=802=20?=
+Subject: [PATCH 3/8] =?UTF-8?q?=E5=90=8C=E6=AD=A5=E5=9F=BA=E7=A1=802=20?=
  =?UTF-8?q?=E6=9E=84=E5=BB=BA=E9=AA=8C=E8=AF=81=E5=90=8E=E7=9A=84=E4=BF=AE?=
  =?UTF-8?q?=E6=AD=A3=EF=BC=88guc=5Ftables.c=20GUC=20=E6=9D=A1=E7=9B=AE=20+?=
  =?UTF-8?q?=20assign=5Fhook=20=E9=9D=9E=20static=20+=20includes=EF=BC=89?=
@@ -948,7 +948,7 @@ index c3bf6444a8..f263905941 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 07:54:03 +0800
-Subject: [PATCH 4/7] =?UTF-8?q?jtsec=20=E6=89=A7=E8=A1=8C=E7=82=B9?=
+Subject: [PATCH 4/8] =?UTF-8?q?jtsec=20=E6=89=A7=E8=A1=8C=E7=82=B9?=
  =?UTF-8?q?=E9=92=A9=E5=AD=90=EF=BC=9AExecutorStart=20(DML=20=E8=AF=BB?=
  =?UTF-8?q?=E8=B7=AF=E5=BE=84=20MAC)=20+=20ProcessUtility=20(DDL=20?=
  =?UTF-8?q?=E8=A7=92=E8=89=B2=E6=A3=80=E6=9F=A5)?=
@@ -1225,7 +1225,7 @@ index f263905941..541c4fd0ea 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 12:31:06 +0800
-Subject: [PATCH 5/7] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E6=A0=87?=
+Subject: [PATCH 5/8] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E6=A0=87?=
  =?UTF-8?q?=E7=AD=BE=E8=A7=A3=E6=9E=90=E5=B4=A9=E6=BA=83=E3=80=81=E9=9D=99?=
  =?UTF-8?q?=E9=BB=98=E9=99=8D=E5=AF=86=E4=B8=8E=20fail-open=20=E8=B7=AF?=
  =?UTF-8?q?=E5=BE=84=EF=BC=8C=E9=92=A9=E5=AD=90=E9=A6=96=E6=AC=A1=E5=8F=AF?=
@@ -1513,7 +1513,7 @@ index 541c4fd0ea..0f1e14f917 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 13:39:42 +0800
-Subject: [PATCH 6/7] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E5=85=AD?=
+Subject: [PATCH 6/8] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E5=85=AD?=
  =?UTF-8?q?=E4=B8=AA=E9=98=BB=E6=96=AD=E7=BA=A7=E7=BC=BA=E9=99=B7=EF=BC=8C?=
  =?UTF-8?q?=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8=E9=A6=96=E6=AC=A1=E7=9C=9F?=
  =?UTF-8?q?=E6=AD=A3=E5=8F=AF=E7=94=A8=EF=BC=88=E8=BF=90=E8=A1=8C=E6=97=B6?=
@@ -1972,7 +1972,7 @@ index 0f1e14f917..47ce78117a 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 14:38:45 +0800
-Subject: [PATCH 7/7] =?UTF-8?q?jtsec=EF=BC=9A=E5=AE=9E=E7=8E=B0=E5=86=99?=
+Subject: [PATCH 7/8] =?UTF-8?q?jtsec=EF=BC=9A=E5=AE=9E=E7=8E=B0=E5=86=99?=
  =?UTF-8?q?=E8=B7=AF=E5=BE=84=EF=BC=88*=20=E5=B1=9E=E6=80=A7=EF=BC=89?=
  =?UTF-8?q?=E4=B8=8E=E8=B6=85=E7=AE=A1=E5=9B=B4=E6=A0=8F=EF=BC=8C=E4=BF=AE?=
  =?UTF-8?q?=E5=A4=8D=E5=86=99=E9=99=8D=E5=AF=86=E7=BC=BA=E5=8F=A3=EF=BC=88?=
@@ -2598,3 +2598,108 @@ index 47ce78117a..7fb337a971 100644
  extern PGDLLEXPORT Datum jt_sec_set_mac_enabled(PG_FUNCTION_ARGS);
  extern PGDLLEXPORT Datum jt_sec_get_mac_enabled(PG_FUNCTION_ARGS);
  extern PGDLLEXPORT Datum jt_sec_check_access_sql(PG_FUNCTION_ARGS);
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: fushilu <fulu0709@foxmail.com>
+Date: Sun, 20 Sep 2026 14:50:39 +0800
+Subject: [PATCH 8/8] =?UTF-8?q?jtsec=EF=BC=9A=E8=A1=A5=20COPY=20/=20TRUNCA?=
+ =?UTF-8?q?TE=20=E6=89=A7=E8=A1=8C=E7=82=B9=E7=9A=84=E5=86=99=E6=A3=80?=
+ =?UTF-8?q?=E6=9F=A5=EF=BC=8C=E4=BF=AE=E5=A4=8D=E5=86=99=E9=99=8D=E5=AF=86?=
+ =?UTF-8?q?=E7=BB=95=E8=BF=87=EF=BC=88=E8=BF=90=E8=A1=8C=E6=97=B6=2041/41?=
+ =?UTF-8?q?=20=E7=BB=BF=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+docs/05 §6.2 执行点清单里的 COPY 与 TRUNCATE 此前完全未覆盖，实测确认
+可绕过 * 属性：
+
+- COPY FROM **不经 ExecutorStart**（copyfrom.c 自建 ModifyTableState 与
+  ResultRelInfo，直接调 table AM insert 例程），故上轮在 ExecutorStart
+  里做的写检查对它无效。实测：高密会话（30:finance）对 '10:' 表
+  `COPY t FROM ...` 成功写入（违反禁止向下写）。
+- TRUNCATE 是 utility 语句，不经 ModifyTable，同样漏检；实测高密会话
+  可清空低密表。
+
+在 ProcessUtility 钩子补 T_CopyStmt / T_TruncateStmt 分支（RangeVar →
+RangeVarGetRelid → jt_sec_check_rel_label）。方向语义与 INSERT 对齐：
+COPY FROM 只做写检查（追加不读既有行，强加读检查会拒掉合法的向上写）；
+COPY TO 只做读检查；TRUNCATE 做写检查（清空是破坏性写）。
+
+运行时 41/41（主套件扩为 9 节）：原 36 项无回归 + COPY/TRUNCATE 5 项
+（向下写被拒、向下读放行、向上写放行、读高密表被拒）。
+---
+ src/backend/jtsec/jt_sec_hooks.c | 53 ++++++++++++++++++++++++++++++++
+ 1 file changed, 53 insertions(+)
+
+diff --git a/src/backend/jtsec/jt_sec_hooks.c b/src/backend/jtsec/jt_sec_hooks.c
+index 1c8ce9392d..ed8c75b36a 100644
+--- a/src/backend/jtsec/jt_sec_hooks.c
++++ b/src/backend/jtsec/jt_sec_hooks.c
+@@ -19,6 +19,7 @@
+ 
+ #include "access/table.h"
+ #include "catalog/catalog.h"
++#include "catalog/namespace.h"
+ #include "catalog/objectaccess.h"
+ #include "commands/seclabel.h"
+ #include "executor/executor.h"
+@@ -424,6 +425,58 @@ jt_sec_ProcessUtility(PlannedStmt *pstmt,
+ 							 errmsg("MAC: ALTER TABLE denied (requires secadmin or sysadmin role)")));
+ 				break;
+ 
++			/*
++			 * COPY —— **不走 ExecutorStart**（copyfrom.c 自建 ModifyTableState
++			 * 与 ResultRelInfo，直接调 table AM 的 insert 例程），因此上轮在
++			 * ExecutorStart 里做的写检查对它完全无效。
++			 *
++			 * 实测：高密会话（30:finance）对 '10:' 表执行 `COPY t FROM ...`
++			 * 成功写入 —— 违反 * 属性（禁止向下写）。此处补检查。
++			 *
++			 * 方向语义（与 INSERT 对齐）：
++			 *   - `COPY t FROM`（写表 t）→ **只做写检查**。COPY FROM 是追加，
++			 *     不读取既有行，故无需读检查；强加读检查会拒掉合法的向上写
++			 *     （与 INSERT 的处理保持一致）。
++			 *   - `COPY t TO`（读表 t）→ 只做读检查（不下读）。
++			 */
++			case T_CopyStmt:
++				{
++					CopyStmt  *stmt = (CopyStmt *) parsetree;
++					Oid			relid;
++
++					/* COPY (query) TO 无 relation；由 query 路径自身把关 */
++					if (stmt->relation == NULL)
++						break;
++
++					relid = RangeVarGetRelid(stmt->relation, AccessShareLock, false);
++
++					if (stmt->is_from)
++						jt_sec_check_rel_label(relid, JT_ACCESS_WRITE, "Write");
++					else
++						jt_sec_check_rel_label(relid, JT_ACCESS_READ, "Read");
++				}
++				break;
++
++			/*
++			 * TRUNCATE —— 同样是 utility 语句，不经 ModifyTable。语义上清空
++			 * 表是**破坏性写**，按 * 属性做写检查（实测此前可被高密会话清空
++			 * 低密表）。
++			 */
++			case T_TruncateStmt:
++				{
++					TruncateStmt *stmt = (TruncateStmt *) parsetree;
++					ListCell   *lc;
++
++					foreach(lc, stmt->relations)
++					{
++						RangeVar   *rv = (RangeVar *) lfirst(lc);
++						Oid			relid = RangeVarGetRelid(rv, AccessShareLock, false);
++
++						jt_sec_check_rel_label(relid, JT_ACCESS_WRITE, "Write");
++					}
++				}
++				break;
++
+ 			default:
+ 				break;
+ 		}
