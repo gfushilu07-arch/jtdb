@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 08:58:47 +0800
-Subject: [PATCH 1/5] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8?=
+Subject: [PATCH 1/6] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8?=
  =?UTF-8?q?=20v1=EF=BC=9AMLS=20=E6=A0=87=E7=AD=BE=E6=A8=A1=E5=9E=8B=20+=20?=
  =?UTF-8?q?=E4=B8=89=E6=9D=83=E5=88=86=E7=AB=8B=20+=20=E8=B6=85=E7=AE=A1?=
  =?UTF-8?q?=E5=9B=B4=E6=A0=8F=20+=20MAC=20=E6=A3=80=E6=9F=A5?=
@@ -750,7 +750,7 @@ index 0000000000..c3bf6444a8
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 09:21:29 +0800
-Subject: [PATCH 2/5] =?UTF-8?q?jt=5Fsec.c:=20=E8=A1=A5=E5=85=A8=20includes?=
+Subject: [PATCH 2/6] =?UTF-8?q?jt=5Fsec.c:=20=E8=A1=A5=E5=85=A8=20includes?=
  =?UTF-8?q?=EF=BC=88guc=5Ftables.h/varatt.h=EF=BC=89=EF=BC=8C=E4=BF=AE?=
  =?UTF-8?q?=E5=A4=8D=20PG18=20=E6=8B=86=E5=88=86=E5=A4=B4=E6=96=87?=
  =?UTF-8?q?=E4=BB=B6?=
@@ -779,7 +779,7 @@ index 79f82fa22f..8fc329b60b 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 13:00:38 +0800
-Subject: [PATCH 3/5] =?UTF-8?q?=E5=90=8C=E6=AD=A5=E5=9F=BA=E7=A1=802=20?=
+Subject: [PATCH 3/6] =?UTF-8?q?=E5=90=8C=E6=AD=A5=E5=9F=BA=E7=A1=802=20?=
  =?UTF-8?q?=E6=9E=84=E5=BB=BA=E9=AA=8C=E8=AF=81=E5=90=8E=E7=9A=84=E4=BF=AE?=
  =?UTF-8?q?=E6=AD=A3=EF=BC=88guc=5Ftables.c=20GUC=20=E6=9D=A1=E7=9B=AE=20+?=
  =?UTF-8?q?=20assign=5Fhook=20=E9=9D=9E=20static=20+=20includes=EF=BC=89?=
@@ -948,7 +948,7 @@ index c3bf6444a8..f263905941 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 07:54:03 +0800
-Subject: [PATCH 4/5] =?UTF-8?q?jtsec=20=E6=89=A7=E8=A1=8C=E7=82=B9?=
+Subject: [PATCH 4/6] =?UTF-8?q?jtsec=20=E6=89=A7=E8=A1=8C=E7=82=B9?=
  =?UTF-8?q?=E9=92=A9=E5=AD=90=EF=BC=9AExecutorStart=20(DML=20=E8=AF=BB?=
  =?UTF-8?q?=E8=B7=AF=E5=BE=84=20MAC)=20+=20ProcessUtility=20(DDL=20?=
  =?UTF-8?q?=E8=A7=92=E8=89=B2=E6=A3=80=E6=9F=A5)?=
@@ -1225,7 +1225,7 @@ index f263905941..541c4fd0ea 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 12:31:06 +0800
-Subject: [PATCH 5/5] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E6=A0=87?=
+Subject: [PATCH 5/6] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E6=A0=87?=
  =?UTF-8?q?=E7=AD=BE=E8=A7=A3=E6=9E=90=E5=B4=A9=E6=BA=83=E3=80=81=E9=9D=99?=
  =?UTF-8?q?=E9=BB=98=E9=99=8D=E5=AF=86=E4=B8=8E=20fail-open=20=E8=B7=AF?=
  =?UTF-8?q?=E5=BE=84=EF=BC=8C=E9=92=A9=E5=AD=90=E9=A6=96=E6=AC=A1=E5=8F=AF?=
@@ -1509,3 +1509,462 @@ index 541c4fd0ea..0f1e14f917 100644
 +extern bool jt_sec_check_table_access(struct RelationData *rel, JtAccessMode mode);
 +
  #endif							/* JT_SEC_H */
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: fushilu <fulu0709@foxmail.com>
+Date: Sun, 20 Sep 2026 13:39:42 +0800
+Subject: [PATCH 6/6] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E5=85=AD?=
+ =?UTF-8?q?=E4=B8=AA=E9=98=BB=E6=96=AD=E7=BA=A7=E7=BC=BA=E9=99=B7=EF=BC=8C?=
+ =?UTF-8?q?=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8=E9=A6=96=E6=AC=A1=E7=9C=9F?=
+ =?UTF-8?q?=E6=AD=A3=E5=8F=AF=E7=94=A8=EF=BC=88=E8=BF=90=E8=A1=8C=E6=97=B6?=
+ =?UTF-8?q?=2023/23=20=E7=BB=BF=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+此前 jtsec 只有编译验证，从未跑起来。本轮完整构建 PG + initdb + 多角色
+多密级 SQL 实测，逐个暴露并修复六个阻断级缺陷——每一个都足以让安全内核
+完全失效，且多数是静默失效（不报错、不崩溃，只是检查不生效）：
+
+1. **GUC 重复注册 → 服务器无法启动**。jt_sec.* 既静态定义在 guc_tables.c，
+   又由 jt_sec_register_gucs() 在 PostgresMain 动态 DefineCustom*。后者在
+   InitializeGUCOptions() 之后执行，撞 define_custom_variable 的
+   "attempt to redefine parameter" —— **initdb/postgres 直接 FATAL**。
+   删除动态注册（静态表是正确来源：postmaster 读 conf 需要它）。
+
+2. **ProcessUtility 自递归 → initdb post-bootstrap 挂死**。
+   PostgresSingleUserMain 与 PostgresMain 都调用 jt_sec_hooks_init，而前者
+   随后进入后者，第二次执行 `prev_ProcessUtility = ProcessUtility_hook`
+   读到的是自己 → 自递归。sample 确认挂死在 jt_sec_hooks.c 的
+   prev_ProcessUtility 调用。改为幂等守卫 + 只在 PostgresMain 安装。
+
+3. **标签提供者从未注册 → SECURITY LABEL 不可用**。register_label_provider
+   未调用，`SECURITY LABEL FOR 'jt'` 报 "provider is not loaded"，标签根本
+   写不进去。补注册，并加写入前校验钩子（非法标签在入口即拒，从源头消除
+   损坏标签，而非只靠下游 fail-closed）。
+
+4. **ObjectAddress 取值错误 → 标签永远查不到，MAC 静默全放行**。
+   查标签时传 classId=表 OID、objectId=reltablespace；正确应为
+   classId=RelationRelationId(1259)、objectId=表 OID。实测 pg_seclabel 存的是
+   1259|16393，与错误取值永不匹配 —— 于是所有表都被当成"未标记"放行。
+
+5. **GUC 上下文过宽 → 任意用户可绕过 MAC**。jt_sec.mac_enabled 与
+   jt_sec.role 原为 PGC_USERSET：低密用户只需 `SET jt_sec.mac_enabled=off`
+   就能关闭整套 BLP 再读高密数据；`SET jt_sec.role='secadmin'` 可自封安全
+   管理员。改为 PGC_SUSET（仅超级用户）。实测确认过绕过路径。
+
+6. **SQL 函数未登记 pg_proc → SQL 层完全不可调用**。六个函数只有
+   PG_FUNCTION_INFO_V1 声明，`SELECT jt_label_dominate(...)` 报
+   "function does not exist"。其中 jt_sec_set_session_label 缺失最严重：
+   **没有任何路径能把会话标签提到高密级**，MAC 只能拒绝、永不放行。
+   补登记 pg_proc.dat（OID 8419-8424）。
+
+运行时验证（独立 worktree + 完整 PG 构建 + initdb + 实测）23/23 全绿：
+标签谓词语义（dominate/类别子集/空标签）、解析 fail-closed（拼错不返回
+true、custom8 高位不崩、越界 level 拒绝、非法会话标签写入报错）、标签写入
+校验、权限提升防护（普通用户不得开关 MAC、不得自封 secadmin）、三权分立、
+BLP 强制访问控制（低密读高密被拒、读公开放行、未提标签主体仍被拒）。
+---
+ src/backend/jtsec/jt_sec.c          | 63 +++++---------------
+ src/backend/jtsec/jt_sec_hooks.c    | 91 ++++++++++++++++++++++++-----
+ src/backend/tcop/postgres.c         | 26 +++++++--
+ src/backend/utils/misc/guc_tables.c | 27 ++++-----
+ src/include/catalog/pg_proc.dat     | 30 ++++++++++
+ src/include/jtsec/jt_sec.h          |  1 -
+ 6 files changed, 156 insertions(+), 82 deletions(-)
+
+diff --git a/src/backend/jtsec/jt_sec.c b/src/backend/jtsec/jt_sec.c
+index af7b4c1aa0..7e5b7f736f 100644
+--- a/src/backend/jtsec/jt_sec.c
++++ b/src/backend/jtsec/jt_sec.c
+@@ -351,18 +351,23 @@ jt_sec_context_is_trusted(void)
+ }
+ 
+ /* ------------------------------------------------------------------------
+- * GUC 注册（jt_sec.* 前缀）
++ * GUC（jt_sec.* 前缀）
++ *
++ * **GUC 在 guc_tables.c 中静态定义**，不在此动态注册。
++ *
++ * 原因：postmaster 在 fork 后端之前要读 postgresql.conf，静态条目让
++ * jt_sec.* 从一开始就是已知参数（正确 vartype、可进 pg_settings、
++ * PGC_SIGHUP 可重载）；也正因静态表要引用 assign hook，该 hook 不能是
++ * static。
++ *
++ * 曾经的 `jt_sec_register_gucs()`（DefineCustomBoolVariable/Enum）与静态
++ * 条目**重复定义同名参数**：PostgresMain 先跑 InitializeGUCOptions()
++ * 建好静态表，再调用它便撞上 `define_custom_variable` 的
++ * "attempt to redefine parameter" —— **initdb/postgres 直接 FATAL 起不来**
++ * （实测：`FATAL: attempt to redefine parameter "jt_sec.mac_enabled"`）。
++ * 该函数已删除；新增 GUC 请只改 guc_tables.c。
+  * ------------------------------------------------------------------------ */
+ 
+-static const struct config_enum_entry jt_sec_role_options[] = {
+-	{"none", JT_ROLE_NONE, false},
+-	{"secadmin", JT_ROLE_SECADMIN, false},
+-	{"sysadmin", JT_ROLE_SYSADMIN, false},
+-	{"auditor", JT_ROLE_AUDITOR, false},
+-	{"trusted", JT_ROLE_TRUSTED, false},
+-	{NULL, 0, false},
+-};
+-
+ /* jt_sec_role_guc 在 guc_tables.c 中定义（int），assign hook 在下方 */
+ int		jt_sec_role_guc = 0;
+ 
+@@ -372,44 +377,6 @@ jt_sec_role_assign_hook(int newval, void *extra)
+ 	jt_sec_set_roles((unsigned int) newval);
+ }
+ 
+-void
+-jt_sec_register_gucs(void)
+-{
+-	DefineCustomBoolVariable(
+-		"jt_sec.mac_enabled",
+-		"Enable MAC (Mandatory Access Control) label checks",
+-		"When on, BLP rules (no read down, no write up) are enforced. "
+-		"Only jt_secadmin can toggle.",
+-		&jt_sec_mac_enabled,
+-		false,
+-		PGC_USERSET,
+-		0,
+-		NULL, NULL, NULL);
+-
+-	DefineCustomBoolVariable(
+-		"jt_sec.superuser_fence",
+-		"Fence superuser from bypassing MAC checks",
+-		"When on, superuser is also subject to MAC (ADR-012 fence).",
+-		&jt_sec_superuser_fence,
+-		false,
+-		PGC_SIGHUP,
+-		0,
+-		NULL, NULL, NULL);
+-
+-	DefineCustomEnumVariable(
+-		"jt_sec.role",
+-		"Active security role (three-way separation)",
+-		"secadmin and sysadmin are mutually exclusive (ADR-012).",
+-		&jt_sec_role_guc,
+-		JT_ROLE_NONE,
+-		jt_sec_role_options,
+-		PGC_USERSET,
+-		0,
+-		NULL,
+-		jt_sec_role_assign_hook,
+-		NULL);
+-}
+-
+ /* ------------------------------------------------------------------------
+  * SQL 接口（fmgr）
+  * ------------------------------------------------------------------------ */
+diff --git a/src/backend/jtsec/jt_sec_hooks.c b/src/backend/jtsec/jt_sec_hooks.c
+index b0f91af0d4..a74a00aff0 100644
+--- a/src/backend/jtsec/jt_sec_hooks.c
++++ b/src/backend/jtsec/jt_sec_hooks.c
+@@ -18,6 +18,7 @@
+ #include "postgres.h"
+ 
+ #include "access/table.h"
++#include "catalog/catalog.h"
+ #include "catalog/objectaccess.h"
+ #include "commands/seclabel.h"
+ #include "executor/executor.h"
+@@ -54,13 +55,22 @@ typedef enum JtObjLabelStatus
+ } JtObjLabelStatus;
+ 
+ /*
+- * jt_sec_get_object_label —— 从 pg_seclabel 读取对象标签（provider="jt"）。
++ * jt_sec_get_object_label —— 从 pg_seclabel 读取**表**的对象标签
++ * （provider="jt"）。
+  *
+  * 返回 NULL 且 *status = JT_OBJ_LABEL_ABSENT = 对象未标记（最低密级）。
+  * 返回 NULL 且 *status = JT_OBJ_LABEL_MALFORMED = 标签损坏（调用方必须拒绝）。
++ *
++ * ObjectAddress 的取值必须与 `SECURITY LABEL ... ON TABLE` 存入时一致：
++ *   classId  = RelationRelationId（pg_class 自身 OID = 1259）
++ *   objectId = 表的 OID
++ *   objectSubId = 0
++ * 曾误写成 classId=表的 OID、objectId=reltablespace，于是 GetSecurityLabel
++ * 永远查不到行——**标签形同虚设，MAC 静默全放行**（且 reltablespace 为 0
++ * 时连行都不会匹配）。reltablespace 与表标签无关，标签键是表 OID。
+  */
+ static JtLabel *
+-jt_sec_get_object_label(Oid classoid, Oid objoid, JtObjLabelStatus *status)
++jt_sec_get_table_label(Oid relid, JtObjLabelStatus *status)
+ {
+ 	ObjectAddress object;
+ 	char	   *seclabel_text;
+@@ -68,8 +78,8 @@ jt_sec_get_object_label(Oid classoid, Oid objoid, JtObjLabelStatus *status)
+ 
+ 	*status = JT_OBJ_LABEL_ABSENT;
+ 
+-	object.classId = classoid;
+-	object.objectId = objoid;
++	object.classId = RelationRelationId;
++	object.objectId = relid;
+ 	object.objectSubId = 0;
+ 
+ 	seclabel_text = GetSecurityLabel(&object, JT_SEC_PROVIDER);
+@@ -92,12 +102,12 @@ jt_sec_get_object_label(Oid classoid, Oid objoid, JtObjLabelStatus *status)
+  * jt_sec_report_malformed_label —— 标签损坏时统一报错（fail-closed）。
+  */
+ static void
+-jt_sec_report_malformed_label(Oid classoid, Oid objoid, JtAccessMode mode)
++jt_sec_report_malformed_label(Oid relid, JtAccessMode mode)
+ {
+ 	ereport(ERROR,
+ 			(errcode(ERRCODE_DATA_CORRUPTED),
+-			 errmsg("MAC: object label is malformed (class %u, object %u, mode %c)",
+-					classoid, objoid, (char) mode),
++			 errmsg("MAC: label of relation %u is malformed (mode %c)",
++					relid, (char) mode),
+ 			 errdetail("Stored label cannot be parsed. Access is denied rather than "
+ 					   "treating the object as unclassified."),
+ 			 errhint("Have jt_secadmin repair the label with SECURITY LABEL FOR 'jt'.")));
+@@ -115,15 +125,11 @@ jt_sec_check_table_access(Relation rel, JtAccessMode mode)
+ 	if (!jt_sec_mac_enabled)
+ 		return true;
+ 
+-	obj_label = jt_sec_get_object_label(RelationGetRelid(rel),
+-									   RelationGetForm(rel)->reltablespace,
+-									   &status);
++	obj_label = jt_sec_get_table_label(RelationGetRelid(rel), &status);
+ 
+ 	/* 标签损坏：拒绝（不得当作"未标记"放行） */
+ 	if (status == JT_OBJ_LABEL_MALFORMED)
+-		jt_sec_report_malformed_label(RelationGetRelid(rel),
+-									  RelationGetForm(rel)->reltablespace,
+-									  mode);
++		jt_sec_report_malformed_label(RelationGetRelid(rel), mode);
+ 
+ 	return jt_sec_check_access(obj_label, mode);
+ }
+@@ -155,9 +161,8 @@ jt_sec_ExecutorStart(QueryDesc *queryDesc, int eflags)
+ 				{
+ 					Relation	rel = table_open(rte->relid, AccessShareLock);
+ 					JtObjLabelStatus lbl_status;
+-					JtLabel    *obj_label = jt_sec_get_object_label(
+-						RelationGetRelid(rel), RelationGetForm(rel)->reltablespace,
+-						&lbl_status);
++					JtLabel    *obj_label = jt_sec_get_table_label(
++						RelationGetRelid(rel), &lbl_status);
+ 
+ 					/* 标签损坏：拒绝（fail-closed，不得当作未标记放行） */
+ 					if (lbl_status == JT_OBJ_LABEL_MALFORMED)
+@@ -258,16 +263,70 @@ jt_sec_ProcessUtility(PlannedStmt *pstmt,
+ 								params, queryEnv, dest, qc);
+ }
+ 
++/* ------------------------------------------------------------------------
++ * 标签提供者（SECURITY LABEL FOR 'jt'）
++ * ------------------------------------------------------------------------ */
++
++/*
++ * jt_sec_object_relabel —— 标签写入前的校验钩子。
++ *
++ * PG 在 `SECURITY LABEL FOR 'jt' ON ... IS '<label>'` 存储前调用本钩子。
++ * 这里**解析一次**：不合法即报错，使 pg_seclabel 里不会存进无法解析的
++ * 标签——从源头消除"损坏标签"状态，而不是只在下游 fail-closed 兜底。
++ *
++ * 仍保留下游的 MALFORMED 处理：标签可能由超级用户直接改目录表、或由
++ * 旧版本写入，纵深防御不可省。
++ */
++static void
++jt_sec_object_relabel(const ObjectAddress *object, const char *seclabel)
++{
++	JtLabel		label;
++
++	if (seclabel == NULL)
++		return;
++
++	if (!jt_label_parse(seclabel, &label))
++		ereport(ERROR,
++				(errcode(ERRCODE_INVALID_NAME),
++				 errmsg("'%s' is not a valid JTDB security label", seclabel),
++				 errhint("Expected \"level[:cat1,cat2,...]\" with level in [%d,%d] "
++						 "and known category names (e.g. '30:finance').",
++						 JT_LEVEL_PUBLIC, JT_LEVEL_PUBLIC + JT_MAX_LEVELS)));
++}
++
+ /* ------------------------------------------------------------------------
+  * 初始化（模块加载时调用）
+  * ------------------------------------------------------------------------ */
+ 
++/*
++ * 幂等守卫。
++ *
++ * **必须幂等**：PostgresSingleUserMain 与 PostgresMain 都会调用本函数，
++ * 而前者随后进入后者——同一进程内会调用两次。若不守卫，第二次执行
++ * `prev_ProcessUtility = ProcessUtility_hook` 时读到的是**自己**，于是
++ * prev_* 指向 jt_sec_ProcessUtility，形成自递归：任何 DDL 都会无限递归
++ * 直至栈耗尽/卡死（实测 `initdb` 的 post-bootstrap 阶段即挂死在
++ * jt_sec_hooks.c:258 的 prev_ProcessUtility 调用上）。
++ */
++static bool jt_sec_hooks_installed = false;
++
+ void
+ jt_sec_hooks_init(void)
+ {
++	if (jt_sec_hooks_installed)
++		return;
++	jt_sec_hooks_installed = true;
++
+ 	prev_ExecutorStart = ExecutorStart_hook;
+ 	ExecutorStart_hook = jt_sec_ExecutorStart;
+ 
+ 	prev_ProcessUtility = ProcessUtility_hook;
+ 	ProcessUtility_hook = jt_sec_ProcessUtility;
++
++	/*
++	 * 注册标签提供者。**不注册则 `SECURITY LABEL FOR 'jt'` 直接报
++	 * "security label provider \"jt\" is not loaded"**——标签根本写不进去，
++	 * 整套 MAC 无从落地（此前实测即如此）。
++	 */
++	register_label_provider(JT_SEC_PROVIDER, jt_sec_object_relabel);
+ }
+diff --git a/src/backend/tcop/postgres.c b/src/backend/tcop/postgres.c
+index 0d2b3dc279..efe7ac42ff 100644
+--- a/src/backend/tcop/postgres.c
++++ b/src/backend/tcop/postgres.c
+@@ -4078,10 +4078,13 @@ PostgresSingleUserMain(int argc, char *argv[],
+ 	 */
+ 	InitializeGUCOptions();
+ 
+-	/* JTDB: register security kernel GUCs and init context (ADR-011/012) */
+-	jt_sec_register_gucs();
+-	jt_sec_context_init();
+-	jt_sec_hooks_init();
++	/*
++	 * JTDB: 安全内核的 GUC 在 guc_tables.c 静态定义（**不在此重复注册**：
++	 * 同名重复定义会让 initdb/postgres 直接 FATAL "attempt to redefine
++	 * parameter"）。context 与 hooks 的安装统一放在 PostgresMain —— 单用户
++	 * 模式随后也会进入 PostgresMain，此处再装一次会因 prev_* 自指造成
++	 * ProcessUtility 自递归（实测 initdb post-bootstrap 挂死）。
++	 */
+ 
+ 	/*
+ 	 * Parse command-line options.
+@@ -4293,6 +4296,21 @@ PostgresMain(const char *dbname, const char *username)
+ 		MyCancelKeyLength = len;
+ 	}
+ 
++	/*
++	 * JTDB: install security kernel hooks and session context for **every**
++	 * backend (ADR-011/012).
++	 *
++	 * 必须放在 PostgresMain（真实客户端后端）路径，而不是只放在
++	 * PostgresSingleUserMain：后者带 Assert(!IsUnderPostmaster)，普通连接
++	 * 根本不经过那里——hooks 与标签提供者从未安装，SECURITY LABEL FOR 'jt'
++	 * 报 "provider is not loaded"、ExecutorStart 检查完全不生效（实测）。
++	 *
++	 * 位置选在 BaseInit() 之后：TopMemoryContext 已就绪（register_label_provider
++	 * 在其中分配），且早于 InitPostgres 的任何查询执行。
++	 */
++	jt_sec_context_init();
++	jt_sec_hooks_init();
++
+ 	/*
+ 	 * General initialization.
+ 	 *
+diff --git a/src/backend/utils/misc/guc_tables.c b/src/backend/utils/misc/guc_tables.c
+index 0b51344811..67785b7ebb 100644
+--- a/src/backend/utils/misc/guc_tables.c
++++ b/src/backend/utils/misc/guc_tables.c
+@@ -1990,7 +1990,13 @@ struct config_bool ConfigureNamesBool[] =
+ 		NULL, NULL, NULL
+ 	},
+ 	{
+-		{"jt_sec.mac_enabled", PGC_USERSET, CUSTOM_OPTIONS,
++		/*
++		 * PGC_SUSET（仅超级用户可改），**不可用 PGC_USERSET**：
++		 * MAC 是强制访问控制，若任意用户可 SET jt_sec.mac_enabled=off，
++		 * 低密主体只需一条 SET 就能关闭整套 BLP 检查再读走高密数据——
++		 * 实测确认过这一绕过路径。安全开关的权限必须高于被它约束的对象。
++		 */
++		{"jt_sec.mac_enabled", PGC_SUSET, CUSTOM_OPTIONS,
+ 			gettext_noop("Enables MAC (Mandatory Access Control) label checks."),
+ 			NULL,
+ 			GUC_NOT_IN_SAMPLE
+@@ -5525,7 +5531,13 @@ struct config_enum ConfigureNamesEnum[] =
+ 		NULL, NULL, NULL
+ 	},
+ 	{
+-		{"jt_sec.role", PGC_USERSET, CUSTOM_OPTIONS,
++		/*
++		 * PGC_SUSET（仅超级用户可改）：角色是权限的来源，若任意用户可
++		 * `SET jt_sec.role='secadmin'` 即可自封安全管理员，进而开启/关闭
++		 * MAC、改写标签——三权分立形同虚设。角色授予必须走受控路径
++		 * （DBA 预置或后续的角色映射），不能由被授权者自行声明。
++		 */
++		{"jt_sec.role", PGC_SUSET, CUSTOM_OPTIONS,
+ 			gettext_noop("Active security role (three-way separation)."),
+ 			"secadmin and sysadmin are mutually exclusive.",
+ 			GUC_NOT_IN_SAMPLE
+@@ -5557,17 +5569,6 @@ struct config_enum ConfigureNamesEnum[] =
+ 		DEFAULT_IO_METHOD, io_method_options,
+ 		NULL, assign_io_method, NULL
+ 	},
+-	{
+-		{"jt_sec.role", PGC_USERSET, CUSTOM_OPTIONS,
+-			gettext_noop("Active security role (three-way separation)."),
+-			"secadmin and sysadmin are mutually exclusive.",
+-			GUC_NOT_IN_SAMPLE
+-		},
+-		&jt_sec_role_guc,
+-		0, jt_sec_role_options,
+-		NULL, jt_sec_role_assign_hook, NULL
+-	},
+-
+ 
+ 	/* End-of-list marker */
+ 	{
+diff --git a/src/include/catalog/pg_proc.dat b/src/include/catalog/pg_proc.dat
+index fb4f7f5035..bb2d2fac68 100644
+--- a/src/include/catalog/pg_proc.dat
++++ b/src/include/catalog/pg_proc.dat
+@@ -12547,4 +12547,34 @@
+   proargnames => '{pid,io_id,io_generation,state,operation,off,length,target,handle_data_len,raw_result,result,target_desc,f_sync,f_localmem,f_buffered}',
+   prosrc => 'pg_get_aios' },
+ 
++# JTDB security kernel SQL interface (ADR-011/012, docs/05)
++# 此前这些函数只有 PG_FUNCTION_INFO_V1 声明而未登记 pg_proc，SQL 层
++# 完全不可调用（`function jt_label_dominate(unknown, unknown) does not exist`）
++# ——其中 jt_sec_set_session_label 缺失尤为严重：**没有任何路径能把会话
++# 标签提到高密级**，MAC 只能拒绝、永不放行，内核实际不可用。
++{ oid => '8419', descr => 'set the session MLS label (jt_secadmin only)',
++  proname => 'jt_sec_set_session_label', provolatile => 'v',
++  prorettype => 'text', proargtypes => 'text',
++  prosrc => 'jt_sec_set_session_label' },
++{ oid => '8420', descr => 'get the session MLS label',
++  proname => 'jt_sec_get_session_label', provolatile => 's',
++  prorettype => 'text', proargtypes => '',
++  prosrc => 'jt_sec_get_session_label' },
++{ oid => '8421', descr => 'enable or disable MAC checks (jt_secadmin only)',
++  proname => 'jt_sec_set_mac_enabled', provolatile => 'v',
++  prorettype => 'bool', proargtypes => 'bool',
++  prosrc => 'jt_sec_set_mac_enabled' },
++{ oid => '8422', descr => 'whether MAC checks are enabled',
++  proname => 'jt_sec_get_mac_enabled', provolatile => 's',
++  prorettype => 'bool', proargtypes => '',
++  prosrc => 'jt_sec_get_mac_enabled' },
++{ oid => '8423', descr => 'check MAC access for a label and mode (r/w/c/a/d)',
++  proname => 'jt_sec_check_access', provolatile => 's',
++  prorettype => 'bool', proargtypes => 'text text',
++  prosrc => 'jt_sec_check_access_sql' },
++{ oid => '8424', descr => 'whether MLS label a dominates label b',
++  proname => 'jt_label_dominate', provolatile => 'i',
++  prorettype => 'bool', proargtypes => 'text text',
++  prosrc => 'jt_sec_label_dominate_sql' },
++
+ ]
+diff --git a/src/include/jtsec/jt_sec.h b/src/include/jtsec/jt_sec.h
+index 0f1e14f917..47ce78117a 100644
+--- a/src/include/jtsec/jt_sec.h
++++ b/src/include/jtsec/jt_sec.h
+@@ -159,7 +159,6 @@ extern PGDLLEXPORT Datum jt_sec_label_dominate_sql(PG_FUNCTION_ARGS);
+  * GUC 注册
+  * ------------------------------------------------------------------------ */
+ 
+-extern void jt_sec_register_gucs(void);
+ extern void jt_sec_hooks_init(void);
+ extern void jt_sec_role_assign_hook(int newval, void *extra);
+ 
