@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 08:58:47 +0800
-Subject: [PATCH 1/6] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8?=
+Subject: [PATCH 1/7] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8?=
  =?UTF-8?q?=20v1=EF=BC=9AMLS=20=E6=A0=87=E7=AD=BE=E6=A8=A1=E5=9E=8B=20+=20?=
  =?UTF-8?q?=E4=B8=89=E6=9D=83=E5=88=86=E7=AB=8B=20+=20=E8=B6=85=E7=AE=A1?=
  =?UTF-8?q?=E5=9B=B4=E6=A0=8F=20+=20MAC=20=E6=A3=80=E6=9F=A5?=
@@ -750,7 +750,7 @@ index 0000000000..c3bf6444a8
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 09:21:29 +0800
-Subject: [PATCH 2/6] =?UTF-8?q?jt=5Fsec.c:=20=E8=A1=A5=E5=85=A8=20includes?=
+Subject: [PATCH 2/7] =?UTF-8?q?jt=5Fsec.c:=20=E8=A1=A5=E5=85=A8=20includes?=
  =?UTF-8?q?=EF=BC=88guc=5Ftables.h/varatt.h=EF=BC=89=EF=BC=8C=E4=BF=AE?=
  =?UTF-8?q?=E5=A4=8D=20PG18=20=E6=8B=86=E5=88=86=E5=A4=B4=E6=96=87?=
  =?UTF-8?q?=E4=BB=B6?=
@@ -779,7 +779,7 @@ index 79f82fa22f..8fc329b60b 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 13:00:38 +0800
-Subject: [PATCH 3/6] =?UTF-8?q?=E5=90=8C=E6=AD=A5=E5=9F=BA=E7=A1=802=20?=
+Subject: [PATCH 3/7] =?UTF-8?q?=E5=90=8C=E6=AD=A5=E5=9F=BA=E7=A1=802=20?=
  =?UTF-8?q?=E6=9E=84=E5=BB=BA=E9=AA=8C=E8=AF=81=E5=90=8E=E7=9A=84=E4=BF=AE?=
  =?UTF-8?q?=E6=AD=A3=EF=BC=88guc=5Ftables.c=20GUC=20=E6=9D=A1=E7=9B=AE=20+?=
  =?UTF-8?q?=20assign=5Fhook=20=E9=9D=9E=20static=20+=20includes=EF=BC=89?=
@@ -948,7 +948,7 @@ index c3bf6444a8..f263905941 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 07:54:03 +0800
-Subject: [PATCH 4/6] =?UTF-8?q?jtsec=20=E6=89=A7=E8=A1=8C=E7=82=B9?=
+Subject: [PATCH 4/7] =?UTF-8?q?jtsec=20=E6=89=A7=E8=A1=8C=E7=82=B9?=
  =?UTF-8?q?=E9=92=A9=E5=AD=90=EF=BC=9AExecutorStart=20(DML=20=E8=AF=BB?=
  =?UTF-8?q?=E8=B7=AF=E5=BE=84=20MAC)=20+=20ProcessUtility=20(DDL=20?=
  =?UTF-8?q?=E8=A7=92=E8=89=B2=E6=A3=80=E6=9F=A5)?=
@@ -1225,7 +1225,7 @@ index f263905941..541c4fd0ea 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 12:31:06 +0800
-Subject: [PATCH 5/6] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E6=A0=87?=
+Subject: [PATCH 5/7] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E6=A0=87?=
  =?UTF-8?q?=E7=AD=BE=E8=A7=A3=E6=9E=90=E5=B4=A9=E6=BA=83=E3=80=81=E9=9D=99?=
  =?UTF-8?q?=E9=BB=98=E9=99=8D=E5=AF=86=E4=B8=8E=20fail-open=20=E8=B7=AF?=
  =?UTF-8?q?=E5=BE=84=EF=BC=8C=E9=92=A9=E5=AD=90=E9=A6=96=E6=AC=A1=E5=8F=AF?=
@@ -1513,7 +1513,7 @@ index 541c4fd0ea..0f1e14f917 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 13:39:42 +0800
-Subject: [PATCH 6/6] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E5=85=AD?=
+Subject: [PATCH 6/7] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E5=85=AD?=
  =?UTF-8?q?=E4=B8=AA=E9=98=BB=E6=96=AD=E7=BA=A7=E7=BC=BA=E9=99=B7=EF=BC=8C?=
  =?UTF-8?q?=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8=E9=A6=96=E6=AC=A1=E7=9C=9F?=
  =?UTF-8?q?=E6=AD=A3=E5=8F=AF=E7=94=A8=EF=BC=88=E8=BF=90=E8=A1=8C=E6=97=B6?=
@@ -1968,3 +1968,633 @@ index 0f1e14f917..47ce78117a 100644
  extern void jt_sec_hooks_init(void);
  extern void jt_sec_role_assign_hook(int newval, void *extra);
  
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: fushilu <fulu0709@foxmail.com>
+Date: Sun, 20 Sep 2026 14:38:45 +0800
+Subject: [PATCH 7/7] =?UTF-8?q?jtsec=EF=BC=9A=E5=AE=9E=E7=8E=B0=E5=86=99?=
+ =?UTF-8?q?=E8=B7=AF=E5=BE=84=EF=BC=88*=20=E5=B1=9E=E6=80=A7=EF=BC=89?=
+ =?UTF-8?q?=E4=B8=8E=E8=B6=85=E7=AE=A1=E5=9B=B4=E6=A0=8F=EF=BC=8C=E4=BF=AE?=
+ =?UTF-8?q?=E5=A4=8D=E5=86=99=E9=99=8D=E5=AF=86=E7=BC=BA=E5=8F=A3=EF=BC=88?=
+ =?UTF-8?q?=E8=BF=90=E8=A1=8C=E6=97=B6=2036/36=20=E7=BB=BF=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+上一轮标记为"未验证"的两项，实测确认是**未实现**，另发现一个降密缺口：
+
+1. **写路径完全没有 MAC 检查**（最严重）。ExecutorStart 钩子只处理
+   CMD_SELECT，INSERT/UPDATE/DELETE/MERGE 一律放行 —— 实测低密主体可
+   直接 INSERT/UPDATE 高密表。按 docs/05 §6.2 实现：目标表从 ModifyTable
+   的 resultRelations 取（不遍历整张 rtable，否则会把 UPDATE 的源表误当
+   写目标而误拒）；UPDATE/DELETE/MERGE 额外加读检查（这些语句必须读既有
+   行，缺此检查可借影响行数反推高密数据）；INSERT 不加读检查 —— BLP 的
+   * 属性允许向上写，强加读检查会偏离 §6.2 既定语义。
+
+2. **写降密缺口**：jt_sec_check_access 在模式分派**之前**统一
+   `if (未标记||公开) return true`，使任何公开/未标记对象对所有写操作
+   放行 —— 高密主体写公开表（向下写）本应被 * 属性拒绝。实测确认：
+   30:finance 主体 INSERT 进 '10:' 表成功。改为该捷径只在读模式生效；
+   写模式把未标记/公开对象按 (PUBLIC, ∅) 代入 * 属性公式（不能直接放行，
+   也不能把 NULL 丢给 dominate —— 那会让未标记表对所有人不可写）。
+
+3. **超管围栏是死代码**：jt_sec_is_superuser_fenced() 定义了却从未被调用；
+   三个管理判定点写作 `!jt_sec_is_secadmin() && !superuser()`，superuser
+   恒可提权。实测：围栏开启时 superuser 仍可 jt_sec_set_session_label
+   自提密级读走数据。新增 jt_sec_may_admin() 统一判定（围栏开启时
+   superuser 不构成管理权限，只认 jt_secadmin），三处判定点改走它。
+
+4. **补写标签/可信主体 SQL 入口**：jt_sec_context_set_write_label 无 SQL
+   入口，可信降标无法触达；补 jt_sec_set_write_label/get_write_label/
+   set_trusted/get_trusted（pg_proc OID 8425-8428），权限同受围栏约束。
+
+运行时 36/36 绿（scripts/test-jtsec-runtime.sh 扩为 8 节自包含套件）：
+原读路径 23 项无回归 + 新增写路径 8 项（向上写放行、向下写拒绝、
+UPDATE/DELETE 需读既有行）+ 围栏 6 项（superuser 不得提标签/设写标签/
+标记可信/读高密表，围栏不可运行期关闭）。
+
+另注：jt_sec.superuser_fence 为 PGC_SIGHUP（运行期不可 SET）——这是正确
+设计，可被随手关掉的围栏不是围栏；测试因此分两个实例（5481 fence=on /
+5482 fence=off）。
+---
+ src/backend/jtsec/jt_sec.c       | 167 +++++++++++++++++++--
+ src/backend/jtsec/jt_sec_hooks.c | 246 ++++++++++++++++++++++++++-----
+ src/include/catalog/pg_proc.dat  |  16 ++
+ src/include/jtsec/jt_sec.h       |   8 +
+ 4 files changed, 386 insertions(+), 51 deletions(-)
+
+diff --git a/src/backend/jtsec/jt_sec.c b/src/backend/jtsec/jt_sec.c
+index 7e5b7f736f..5076c63359 100644
+--- a/src/backend/jtsec/jt_sec.c
++++ b/src/backend/jtsec/jt_sec.c
+@@ -233,6 +233,31 @@ jt_sec_is_superuser_fenced(void)
+ 	return jt_sec_mac_enabled && jt_sec_superuser_fence && superuser();
+ }
+ 
++/*
++ * jt_sec_may_admin —— 调用方是否可执行安全管理员操作
++ * （设置会话标签、开关 MAC）。
++ *
++ * **围栏语义（ADR-012）**：PostgreSQL 的 superuser 可绕过一切检查，
++ * 是安全数据库最大的围栏缺口。故围栏开启时，`superuser()` 不再构成
++ * 管理权限——必须显式持有 jt_secadmin 角色。
++ *
++ * 此前本判定点写作 `!jt_sec_is_secadmin() && !superuser()`，即 superuser
++ * 恒可提权；而 `jt_sec_is_superuser_fenced()` 定义了却从未被调用——
++ * **围栏是死代码**。实测后果：围栏开启时 superuser 仍可
++ * `jt_sec_set_session_label('30:finance')` 自提密级，进而读走高密数据，
++ * 围栏形同虚设。
++ */
++bool
++jt_sec_may_admin(void)
++{
++	if (jt_sec_is_secadmin())
++		return true;
++	/* 围栏开启：superuser 特权被收回（只认 jt_secadmin） */
++	if (jt_sec_is_superuser_fenced())
++		return false;
++	return superuser();
++}
++
+ /* ------------------------------------------------------------------------
+  * BLP 访问检查（docs/05 §3.2）
+  * ------------------------------------------------------------------------ */
+@@ -242,23 +267,35 @@ jt_sec_is_superuser_fenced(void)
+  *
+  * MAC 关闭时全部通过（阶段 0 兼容模式）。
+  * MAC 开启时：
+- *   - superuser + 围栏 → 仍走 BLP（不可绕过）
+  *   - 读：主体标签须支配对象标签（不下读）
+  *   - 写：对象标签须支配主体写标签（不上写），除非主体可信（可降标写）
+- *   - 无对象标签（未标记）：视为最低密级（公开），默认放行
++ *   - 无对象标签（未标记）：视为最低密级（公开）
++ *
++ * **"未标记 = 公开"只对读成立**：读公开数据不构成降密；写则必须走
++ * *-属性判定——高密主体写公开对象即"向下写"，是 BLP 明令禁止的。
++ * 曾经本函数在模式分派**之前**统一 `return true`（未标记即放行），
++ * 于是任何公开/未标记表都成了写降密的缺口（实测：30:finance 主体
++ * INSERT 进 '10:' 表成功）。现在该捷径只在读模式生效。
+  */
+ bool
+ jt_sec_check_access(const JtLabel *object_label, JtAccessMode mode)
+ {
+ 	const JtLabel *subject_label;
++	bool		object_is_public;
+ 
+ 	/* MAC 关闭：全通（阶段 0 兼容模式） */
+ 	if (!jt_sec_mac_enabled)
+ 		return true;
+ 
+-	/* 对象未标记：视为最低密级 */
+-	if (object_label == NULL ||
+-		(object_label->level == JT_LEVEL_PUBLIC && object_label->categories == 0))
++	object_is_public = (object_label == NULL ||
++						(object_label->level == JT_LEVEL_PUBLIC &&
++						 object_label->categories == 0));
++
++	/*
++	 * 读：对象为公开（或未标记）→ 任何主体都可读（读公开不降密）。
++	 * 写：**不得在此放行**，继续走下面的 *-属性判定。
++	 */
++	if (object_is_public && mode == JT_ACCESS_READ)
+ 		return true;
+ 
+ 	subject_label = &jt_sec_ctx.session_label;
+@@ -273,12 +310,30 @@ jt_sec_check_access(const JtLabel *object_label, JtAccessMode mode)
+ 		case JT_ACCESS_CREATE:
+ 		case JT_ACCESS_ALTER:
+ 		case JT_ACCESS_DROP:
+-			/* *-属性：不上写（使用写标签，可信主体可降标） */
++			/*
++			 * *-属性：不上写 —— 对象标签须支配主体写标签。
++			 *
++			 * 未标记/公开对象在公式里视为最低密级 (PUBLIC, ∅)：此时
++			 * dominate 等价于"主体写标签也是最低密级"（公开写公开放行，
++			 * 高密主体写公开表即向下写，拒绝）。不能直接返回 true——
++			 * 那正是此前的降密缺口；也不能把 NULL 丢给 jt_label_dominate
++			 * （它对 NULL 返回 false，会让未标记表对所有人都不可写，
++			 * 包括最低密级主体）。
++			 */
+ 			{
++				JtLabel		public_label;
++				const JtLabel *olabel = object_label;
+ 				const JtLabel *wlabel = jt_sec_context_is_trusted()
+ 					? &jt_sec_ctx.write_label
+ 					: &jt_sec_ctx.session_label;
+-				return jt_label_dominate(object_label, wlabel);
++
++				if (object_is_public)
++				{
++					public_label.level = JT_LEVEL_PUBLIC;
++					public_label.categories = 0;
++					olabel = &public_label;
++				}
++				return jt_label_dominate(olabel, wlabel);
+ 			}
+ 
+ 		default:
+@@ -385,6 +440,10 @@ PG_MODULE_MAGIC;
+ 
+ PG_FUNCTION_INFO_V1(jt_sec_set_session_label);
+ PG_FUNCTION_INFO_V1(jt_sec_get_session_label);
++PG_FUNCTION_INFO_V1(jt_sec_set_write_label);
++PG_FUNCTION_INFO_V1(jt_sec_get_write_label);
++PG_FUNCTION_INFO_V1(jt_sec_set_trusted);
++PG_FUNCTION_INFO_V1(jt_sec_get_trusted);
+ PG_FUNCTION_INFO_V1(jt_sec_set_mac_enabled);
+ PG_FUNCTION_INFO_V1(jt_sec_get_mac_enabled);
+ PG_FUNCTION_INFO_V1(jt_sec_check_access_sql);
+@@ -396,10 +455,19 @@ jt_sec_set_session_label(PG_FUNCTION_ARGS)
+ 	text	   *label_text = PG_GETARG_TEXT_PP(0);
+ 	JtLabel		label;
+ 
+-	if (!jt_sec_is_secadmin() && !superuser())
+-		ereport(ERROR,
+-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+-				 errmsg("only jt_secadmin can set session label")));
++	if (!jt_sec_may_admin())
++	{
++		if (jt_sec_is_superuser_fenced())
++			ereport(ERROR,
++					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++					 errmsg("only jt_secadmin can set session label"),
++					 errdetail("Superuser privilege is fenced "
++							   "(jt_sec.superuser_fence=on).")));
++		else
++			ereport(ERROR,
++					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++					 errmsg("only jt_secadmin can set session label")));
++	}
+ 
+ 	if (!jt_label_parse(text_to_cstring(label_text), &label))
+ 		ereport(ERROR,
+@@ -422,10 +490,19 @@ jt_sec_set_mac_enabled(PG_FUNCTION_ARGS)
+ {
+ 	bool		enable = PG_GETARG_BOOL(0);
+ 
+-	if (!jt_sec_is_secadmin() && !superuser())
+-		ereport(ERROR,
+-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+-				 errmsg("only jt_secadmin can toggle MAC")));
++	if (!jt_sec_may_admin())
++	{
++		if (jt_sec_is_superuser_fenced())
++			ereport(ERROR,
++					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++					 errmsg("only jt_secadmin can toggle MAC"),
++					 errdetail("Superuser privilege is fenced "
++							   "(jt_sec.superuser_fence=on).")));
++		else
++			ereport(ERROR,
++					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++					 errmsg("only jt_secadmin can toggle MAC")));
++	}
+ 
+ 	jt_sec_mac_enabled = enable;
+ 	PG_RETURN_BOOL(jt_sec_mac_enabled);
+@@ -437,6 +514,66 @@ jt_sec_get_mac_enabled(PG_FUNCTION_ARGS)
+ 	PG_RETURN_BOOL(jt_sec_mac_enabled);
+ }
+ 
++/*
++ * jt_sec_set_write_label —— 设置写标签（* 属性用；ADR-012 可信降标）。
++ *
++ * 仅 jt_secadmin（围栏开启时 superuser 不算）可设置。可信主体可持有
++ * 低于会话标签的写标签，实现受控降标写（docs/05 §3.2"可信降标"）。
++ */
++Datum
++jt_sec_set_write_label(PG_FUNCTION_ARGS)
++{
++	text	   *label_text = PG_GETARG_TEXT_PP(0);
++	JtLabel		label;
++
++	if (!jt_sec_may_admin())
++		ereport(ERROR,
++				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++				 errmsg("only jt_secadmin can set write label")));
++
++	if (!jt_label_parse(text_to_cstring(label_text), &label))
++		ereport(ERROR,
++				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
++				 errmsg("invalid label format: %s", text_to_cstring(label_text))));
++
++	jt_sec_context_set_write_label(&label);
++	PG_RETURN_TEXT_P(cstring_to_text(jt_label_to_string(&label)));
++}
++
++Datum
++jt_sec_get_write_label(PG_FUNCTION_ARGS)
++{
++	const JtLabel *label = jt_sec_context_get_write_label();
++	PG_RETURN_TEXT_P(cstring_to_text(jt_label_to_string(label)));
++}
++
++/*
++ * jt_sec_set_trusted —— 标记会话为可信主体（可降标写，docs/05 §3.2）。
++ *
++ * 仅 jt_secadmin（围栏开启时 superuser 不算）可设置。可信标志使写检查
++ * 使用 write_label 而非 session_label —— 若不由受控角色掌握，任何主体
++ * 都能自行降标写，* 属性失效。
++ */
++Datum
++jt_sec_set_trusted(PG_FUNCTION_ARGS)
++{
++	bool		trusted = PG_GETARG_BOOL(0);
++
++	if (!jt_sec_may_admin())
++		ereport(ERROR,
++				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++				 errmsg("only jt_secadmin can mark a session trusted")));
++
++	jt_sec_context_set_trusted(trusted);
++	PG_RETURN_BOOL(jt_sec_context_is_trusted());
++}
++
++Datum
++jt_sec_get_trusted(PG_FUNCTION_ARGS)
++{
++	PG_RETURN_BOOL(jt_sec_context_is_trusted());
++}
++
+ Datum
+ jt_sec_check_access_sql(PG_FUNCTION_ARGS)
+ {
+diff --git a/src/backend/jtsec/jt_sec_hooks.c b/src/backend/jtsec/jt_sec_hooks.c
+index a74a00aff0..1c8ce9392d 100644
+--- a/src/backend/jtsec/jt_sec_hooks.c
++++ b/src/backend/jtsec/jt_sec_hooks.c
+@@ -26,6 +26,9 @@
+ #include "jtsec/jt_sec.h"
+ #include "miscadmin.h"
+ #include "nodes/nodes.h"
++#include "nodes/parsenodes.h"
++#include "nodes/plannodes.h"
++#include "parser/parsetree.h"
+ #include "tcop/utility.h"
+ #include "utils/rel.h"
+ 
+@@ -135,9 +138,135 @@ jt_sec_check_table_access(Relation rel, JtAccessMode mode)
+ }
+ 
+ /* ------------------------------------------------------------------------
+- * ExecutorStart 钩子：查询执行时校验表级标签
++ * ExecutorStart 钩子：查询执行时校验表级标签（读路径 + 写路径）
+  * ------------------------------------------------------------------------ */
+ 
++/*
++ * jt_sec_check_rel_label —— 对单个关系做 MAC 检查（读或写）。
++ *
++ * 读用 AccessShareLock（与执行器一致）；写用 RowExclusiveLock，且**在
++ * 拿锁后再取标签**——标签可能在等待锁期间被 secadmin 改过，先读后锁会
++ * 用旧标签做判断（TOCTOU）。
++ */
++static void
++jt_sec_check_rel_label(Oid relid, JtAccessMode mode, const char *verb)
++{
++	Relation	rel;
++	JtObjLabelStatus lbl_status;
++	JtLabel    *obj_label;
++	LOCKMODE	lockmode = (mode == JT_ACCESS_READ) ? AccessShareLock : RowExclusiveLock;
++
++	rel = table_open(relid, lockmode);
++
++	obj_label = jt_sec_get_table_label(RelationGetRelid(rel), &lbl_status);
++
++	/* 标签损坏：拒绝（fail-closed，不得当作未标记放行） */
++	if (lbl_status == JT_OBJ_LABEL_MALFORMED)
++	{
++		char	   *relname = pstrdup(RelationGetRelationName(rel));
++
++		table_close(rel, lockmode);
++		ereport(ERROR,
++				(errcode(ERRCODE_DATA_CORRUPTED),
++				 errmsg("MAC: label of table \"%s\" is malformed", relname),
++				 errdetail("Stored label cannot be parsed. %s is denied rather than "
++						   "treating the table as unclassified.", verb),
++				 errhint("Have jt_secadmin repair the label with "
++						 "SECURITY LABEL FOR 'jt'.")));
++	}
++
++	if (obj_label != NULL && !jt_sec_check_access(obj_label, mode))
++	{
++		char	   *relname = pstrdup(RelationGetRelationName(rel));
++		char	   *labeltxt = pstrdup(jt_label_to_string(obj_label));
++
++		table_close(rel, lockmode);
++		if (mode == JT_ACCESS_READ)
++			ereport(ERROR,
++					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++					 errmsg("MAC: read denied for table \"%s\" (label %s)",
++							relname, labeltxt),
++					 errdetail("Simple security property: subject label "
++							   "does not dominate object label.")));
++		else
++			ereport(ERROR,
++					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++					 errmsg("MAC: write denied for table \"%s\" (label %s)",
++							relname, labeltxt),
++					 errdetail("*-property: object label does not dominate the "
++							   "subject write label (no write down).")));
++	}
++	table_close(rel, lockmode);
++}
++
++/*
++ * jt_sec_is_target_rel —— 该 RTE 是否是需要写检查的目标表。
++ */
++static bool
++jt_sec_is_target_rel(RangeTblEntry *rte)
++{
++	return rte->rtekind == RTE_RELATION &&
++		(rte->relkind == RELKIND_RELATION ||
++		 rte->relkind == RELKIND_PARTITIONED_TABLE);
++}
++
++/*
++ * jt_sec_collect_write_targets —— 收集写语句的目标表 OID。
++ *
++ * 目标表由 ModifyTable 计划的 `resultRelations` 给出（值为 PlannedStmt
++ * rtable 的 1-based 下标，用 rt_fetch 取）。返回 List<Oid>。
++ *
++ * **ModifyTable 必为写计划的根节点**：`planner.c` 在
++ * `if (parse->commandType != CMD_SELECT)` 分支里把 ModifyTable 添加到计划
++ * 顶层（"Add only leaf children to ModifyTable"）。因此直接检查根节点即可，
++ * 不需要（PG18 也不提供）plan 级递归 walker —— `expression_tree_walker`
++ * 只处理表达式/Query，不遍历 Plan。
++ *
++ * 为什么不用 commandType != CMD_SELECT 直接遍历整张 rtable：
++ * UPDATE/DELETE/MERGE 的 rtable 同时含目标表与被读取的源表，把源表也当
++ * 写目标会误拒合法语句。
++ *
++ * **fail-closed**：若根节点不是 ModifyTable（计划形态异常），直接报错。
++ * 返回空表会让写检查被静默跳过——安全代码不能有这种静默通道。
++ */
++static List *
++jt_sec_collect_write_targets(PlannedStmt *pstmt)
++{
++	Plan	   *root = pstmt->planTree;
++	List	   *targets = NIL;
++
++	if (root == NULL || !IsA(root, ModifyTable))
++		ereport(ERROR,
++				(errcode(ERRCODE_INTERNAL_ERROR),
++				 errmsg("MAC: cannot identify the target table of a write statement"),
++				 errdetail("The plan root is not a ModifyTable node. Access is denied "
++						   "rather than silently skipping the mandatory write check."),
++				 errhint("This is a JTDB security kernel defect; please report it.")));
++
++	{
++		ModifyTable *mt = (ModifyTable *) root;
++		ListCell   *lc;
++
++		foreach(lc, mt->resultRelations)
++		{
++			Index		rti = (Index) lfirst_int(lc);
++			RangeTblEntry *rte = rt_fetch(rti, pstmt->rtable);
++
++			if (rte != NULL && rte->rtekind == RTE_RELATION)
++				targets = lappend_oid(targets, rte->relid);
++		}
++	}
++
++	if (targets == NIL)
++		ereport(ERROR,
++				(errcode(ERRCODE_INTERNAL_ERROR),
++				 errmsg("MAC: write statement has no resolvable target table"),
++				 errdetail("resultRelations yielded no relation. Access is denied rather "
++						   "than silently skipping the mandatory write check.")));
++
++	return targets;
++}
++
+ static void
+ jt_sec_ExecutorStart(QueryDesc *queryDesc, int eflags)
+ {
+@@ -146,55 +275,100 @@ jt_sec_ExecutorStart(QueryDesc *queryDesc, int eflags)
+ 	{
+ 		PlannedStmt *pstmt = queryDesc->plannedstmt;
+ 
+-		if (pstmt != NULL && pstmt->commandType == CMD_SELECT)
++		if (pstmt != NULL)
+ 		{
+-			/* 读路径：校验范围表（rtable）中的表标签 */
+ 			ListCell   *lc;
+ 
+-			foreach(lc, pstmt->rtable)
++			/*
++			 * 读路径：SELECT 的 rtable 全部需要"不下读"检查。
++			 */
++			if (pstmt->commandType == CMD_SELECT)
++			{
++				foreach(lc, pstmt->rtable)
++				{
++					RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
++
++					if (jt_sec_is_target_rel(rte))
++						jt_sec_check_rel_label(rte->relid, JT_ACCESS_READ, "Read");
++				}
++			}
++
++			/*
++			 * 写路径：INSERT/UPDATE/DELETE/MERGE 的**目标表**需要"不上写"
++			 * 检查（docs/05 §6.2：写前校验 `dominate(object_label,
++			 * subject_label)` —— 对象标签须支配主体写标签）。
++			 *
++			 * 目标表从 ModifyTable 计划的 resultRelations（rtable 下标）取，
++			 * 不能遍历整张 rtable：UPDATE/DELETE 的 rtable 里同时含
++			 * 目标表与被读取的源表，把源表也按"写"检查会误拒合法语句。
++			 *
++			 * 此前本钩子只处理 CMD_SELECT —— **写路径完全没有 MAC 检查**，
++			 * 低密主体可直接 INSERT/UPDATE 高密表（实测确认）。
++			 */
++			if (pstmt->commandType == CMD_INSERT ||
++				pstmt->commandType == CMD_UPDATE ||
++				pstmt->commandType == CMD_DELETE ||
++				pstmt->commandType == CMD_MERGE)
+ 			{
+-				RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
++				List	   *targets = jt_sec_collect_write_targets(pstmt);
+ 
+-				if (rte->rtekind == RTE_RELATION &&
+-					(rte->relkind == RELKIND_RELATION ||
+-					 rte->relkind == RELKIND_PARTITIONED_TABLE))
++				foreach(lc, targets)
+ 				{
+-					Relation	rel = table_open(rte->relid, AccessShareLock);
+-					JtObjLabelStatus lbl_status;
+-					JtLabel    *obj_label = jt_sec_get_table_label(
+-						RelationGetRelid(rel), &lbl_status);
++					Oid			relid = lfirst_oid(lc);
++
++					jt_sec_check_rel_label(relid, JT_ACCESS_WRITE, "Write");
++				}
+ 
+-					/* 标签损坏：拒绝（fail-closed，不得当作未标记放行） */
+-					if (lbl_status == JT_OBJ_LABEL_MALFORMED)
++				/*
++				 * UPDATE/DELETE/MERGE **额外**需要目标表的读权限：这些语句
++				 * 必须读取既有行才能定位/改写它们（* 属性只约束"写"，
++				 * 不授予读）。缺了这一步，低密主体可用
++				 * `UPDATE high_t SET ... WHERE 敏感条件` 通过影响行数/报错
++				 * 反推高密数据（写-读混淆侧信道）。
++				 *
++				 * **INSERT 不加读检查**：BLP 的 * 属性允许"向上写"
++				 * （dominate(object, subject) 成立即可），且 INSERT 无需读
++				 * 既有行；新行标签按 docs/05 §3.3 继承（主体不支配表默认时
++				 * 取表默认标签）。对 INSERT 强加读检查会拒掉合法的向上写，
++				 * 偏离 docs/05 §6.2 的既定语义。
++				 */
++				if (pstmt->commandType != CMD_INSERT)
++				{
++					foreach(lc, targets)
+ 					{
+-						char	   *relname = pstrdup(RelationGetRelationName(rel));
+-
+-						table_close(rel, AccessShareLock);
+-						ereport(ERROR,
+-								(errcode(ERRCODE_DATA_CORRUPTED),
+-								 errmsg("MAC: label of table \"%s\" is malformed",
+-										relname),
+-								 errdetail("Stored label cannot be parsed. Read is denied "
+-										   "rather than treating the table as unclassified."),
+-								 errhint("Have jt_secadmin repair the label with "
+-										 "SECURITY LABEL FOR 'jt'.")));
++						Oid			relid = lfirst_oid(lc);
++
++						jt_sec_check_rel_label(relid, JT_ACCESS_READ, "Read");
+ 					}
++				}
++			}
++
++			/*
++			 * 读路径补充：写语句的 rtable 中非目标表（子查询源表、USING 表）
++			 * 仍受"不下读"约束。
++			 */
++			if (pstmt->commandType != CMD_SELECT)
++			{
++				List	   *targets = jt_sec_collect_write_targets(pstmt);
++
++				foreach(lc, pstmt->rtable)
++				{
++					RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
++					ListCell   *tc;
++					bool		is_target = false;
+ 
+-					if (obj_label != NULL)
++					if (!jt_sec_is_target_rel(rte))
++						continue;
++					foreach(tc, targets)
+ 					{
+-						if (!jt_sec_check_access(obj_label, JT_ACCESS_READ))
++						if (lfirst_oid(tc) == rte->relid)
+ 						{
+-							table_close(rel, AccessShareLock);
+-							ereport(ERROR,
+-									(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+-									 errmsg("MAC: read denied for table \"%s\" (label %s)",
+-											RelationGetRelationName(rel),
+-											jt_label_to_string(obj_label)),
+-									 errdetail("Simple security property: subject label "
+-											   "does not dominate object label.")));
++							is_target = true;
++							break;
+ 						}
+ 					}
+-					table_close(rel, AccessShareLock);
++					if (!is_target)
++						jt_sec_check_rel_label(rte->relid, JT_ACCESS_READ, "Read");
+ 				}
+ 			}
+ 		}
+diff --git a/src/include/catalog/pg_proc.dat b/src/include/catalog/pg_proc.dat
+index bb2d2fac68..b55f9e0297 100644
+--- a/src/include/catalog/pg_proc.dat
++++ b/src/include/catalog/pg_proc.dat
+@@ -12576,5 +12576,21 @@
+   proname => 'jt_label_dominate', provolatile => 'i',
+   prorettype => 'bool', proargtypes => 'text text',
+   prosrc => 'jt_sec_label_dominate_sql' },
++{ oid => '8425', descr => 'set the write MLS label (*-property, jt_secadmin only)',
++  proname => 'jt_sec_set_write_label', provolatile => 'v',
++  prorettype => 'text', proargtypes => 'text',
++  prosrc => 'jt_sec_set_write_label' },
++{ oid => '8426', descr => 'get the write MLS label',
++  proname => 'jt_sec_get_write_label', provolatile => 's',
++  prorettype => 'text', proargtypes => '',
++  prosrc => 'jt_sec_get_write_label' },
++{ oid => '8427', descr => 'mark the session as trusted (allows write-down)',
++  proname => 'jt_sec_set_trusted', provolatile => 'v',
++  prorettype => 'bool', proargtypes => 'bool',
++  prosrc => 'jt_sec_set_trusted' },
++{ oid => '8428', descr => 'whether the session is a trusted subject',
++  proname => 'jt_sec_get_trusted', provolatile => 's',
++  prorettype => 'bool', proargtypes => '',
++  prosrc => 'jt_sec_get_trusted' },
+ 
+ ]
+diff --git a/src/include/jtsec/jt_sec.h b/src/include/jtsec/jt_sec.h
+index 47ce78117a..7fb337a971 100644
+--- a/src/include/jtsec/jt_sec.h
++++ b/src/include/jtsec/jt_sec.h
+@@ -131,6 +131,10 @@ extern bool jt_sec_is_secadmin(void);
+ extern bool jt_sec_is_sysadmin(void);
+ extern bool jt_sec_is_auditor(void);
+ extern bool jt_sec_is_superuser_fenced(void);
++/* 是否可执行安全管理员操作（设标签/开关 MAC）。围栏开启时 superuser 不再
++ * 构成管理权限（ADR-012）——所有管理判定点必须走本函数，不得直接
++ * `!jt_sec_is_secadmin() && !superuser()`。 */
++extern bool jt_sec_may_admin(void);
+ 
+ /* ------------------------------------------------------------------------
+  * 上下文管理
+@@ -150,6 +154,10 @@ extern bool jt_sec_context_is_trusted(void);
+ 
+ extern PGDLLEXPORT Datum jt_sec_set_session_label(PG_FUNCTION_ARGS);
+ extern PGDLLEXPORT Datum jt_sec_get_session_label(PG_FUNCTION_ARGS);
++extern PGDLLEXPORT Datum jt_sec_set_write_label(PG_FUNCTION_ARGS);
++extern PGDLLEXPORT Datum jt_sec_get_write_label(PG_FUNCTION_ARGS);
++extern PGDLLEXPORT Datum jt_sec_set_trusted(PG_FUNCTION_ARGS);
++extern PGDLLEXPORT Datum jt_sec_get_trusted(PG_FUNCTION_ARGS);
+ extern PGDLLEXPORT Datum jt_sec_set_mac_enabled(PG_FUNCTION_ARGS);
+ extern PGDLLEXPORT Datum jt_sec_get_mac_enabled(PG_FUNCTION_ARGS);
+ extern PGDLLEXPORT Datum jt_sec_check_access_sql(PG_FUNCTION_ARGS);
