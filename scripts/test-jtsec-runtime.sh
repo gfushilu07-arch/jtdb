@@ -19,6 +19,9 @@
 #   §7 BLP 写路径（* 属性：向上写允许 / 向下写禁止）
 #   §8 COPY/TRUNCATE 执行点
 #   §9 超管围栏（ADR-012：围栏下 superuser 不再构成管理权限）
+#   §10 逃逸路径围栏（docs/02 §3.5）
+#   §11 统一错误码 JT001-JT004（docs/05 §6.2）
+#   §12 E2 审计事件（docs/02 §7.2）
 #
 # 用法: source scripts/env.sh && bash scripts/test-jtsec-runtime.sh
 set -u
@@ -126,6 +129,9 @@ expect_ok  "高密主体读公开表放行（向下读允许）" "$ADMIN" \
 
 # ---------------------------------------------------------------------------
 say "=== 8. COPY / TRUNCATE 执行点（不经 ExecutorStart 的写路径）==="
+# 本节测 COPY 的 **MAC 方向语义**；逃逸路径围栏（§10）默认会先拦下文件形式
+# 的 COPY，故此处显式开白名单，使测试聚焦在 MAC 判定上。
+as "$ADMIN" "SET jt_sec.allow_escape_paths=on;" >/dev/null 2>&1
 # copyfrom.c 自建 ModifyTableState 直接调 table AM，不经 ExecutorStart；
 # TRUNCATE 是 utility 语句同样不经 ModifyTable。二者曾完全漏检（实测高密
 # 会话可 COPY FROM 写低密表、TRUNCATE 清空低密表）。
@@ -138,16 +144,16 @@ printf '5\n' > /tmp/jtsec-copy-src.txt
   -c "COPY pub_copy FROM '/tmp/jtsec-copy-src.txt';" >/dev/null 2>&1
 # 向下写：高密会话写低密表 → 全拒
 expect_err "COPY FROM 向下写被拒" "$ADMIN" \
-  "SET jt_sec.role='secadmin'; SELECT jt_sec_set_session_label('30:finance'); COPY pub_copy FROM '/tmp/jtsec-copy-src.txt';" "MAC: write denied"
+  "SET jt_sec.allow_escape_paths=on; SET jt_sec.role='secadmin'; SELECT jt_sec_set_session_label('30:finance'); COPY pub_copy FROM '/tmp/jtsec-copy-src.txt';" "MAC: write denied"
 expect_err "TRUNCATE 向下写被拒" "$ADMIN" \
-  "SET jt_sec.role='secadmin'; SELECT jt_sec_set_session_label('30:finance'); TRUNCATE pub_copy;" "MAC: write denied"
+  "SET jt_sec.allow_escape_paths=on; SET jt_sec.role='secadmin'; SELECT jt_sec_set_session_label('30:finance'); TRUNCATE pub_copy;" "MAC: write denied"
 # 向下读：放行
 expect_ok  "COPY TO 向下读放行" "$ADMIN" \
-  "SET jt_sec.role='secadmin'; SELECT jt_sec_set_session_label('30:finance'); COPY pub_copy TO '/tmp/jtsec-copy-out.txt';"
+  "SET jt_sec.allow_escape_paths=on; SET jt_sec.role='secadmin'; SELECT jt_sec_set_session_label('30:finance'); COPY pub_copy TO '/tmp/jtsec-copy-out.txt';"
 # 向上写：低密主体 COPY FROM 高密表 → 放行（与 INSERT 一致，追加不读既有行）
-expect_ok  "COPY FROM 向上写放行" low_u "COPY secret_tbl FROM '/tmp/jtsec-copy-src.txt';"
+expect_ok  "COPY FROM 向上写放行" low_u "COPY secret_tbl FROM STDIN;"
 # 不下读：低密主体 COPY TO 高密表 → 拒
-expect_err "COPY TO 读高密表被拒" low_u "COPY secret_tbl TO '/tmp/jtsec-copy-out2.txt';" "MAC: read denied"
+expect_err "COPY TO 读高密表被拒" low_u "COPY secret_tbl TO STDOUT;" "MAC: read denied"
 
 # ---------------------------------------------------------------------------
 say "=== 9. 超管围栏（ADR-012）==="
@@ -159,6 +165,55 @@ expect_err "围栏下 superuser 读高密表被拒"     "$ADMIN" "SELECT count(*
 expect_val "可信标志默认为 false"              "$ADMIN" "SELECT jt_sec_get_trusted()" "f"
 # 围栏是 PGC_SIGHUP：运行期不可 SET（可被随手关掉的围栏不是围栏）
 expect_err "围栏不可运行期关闭（PGC_SIGHUP）"  "$ADMIN" "SET jt_sec.superuser_fence=off" "cannot be changed now"
+
+# ---------------------------------------------------------------------------
+say "=== 10. 逃逸路径围栏（docs/02 §3.5）==="
+# 默认禁用 COPY PROGRAM 与 COPY 文件形式（可绕过内核直接接触文件系统/执行程序）
+expect_err "COPY FROM 文件被禁用" "$ADMIN" "COPY public_tbl FROM '/tmp/jtsec-copy-src.txt';" "JT004|escape"
+expect_err "COPY TO 文件被禁用"   "$ADMIN" "COPY public_tbl TO '/tmp/jtsec-esc-out.txt';" "JT004|escape"
+expect_err "COPY FROM PROGRAM 被禁用" "$ADMIN" "COPY public_tbl FROM PROGRAM 'echo 1';" "JT004|escape"
+expect_err "COPY TO PROGRAM 被禁用"   "$ADMIN" "COPY public_tbl TO PROGRAM 'cat';" "JT004|escape"
+# 普通用户不得开启白名单（PGC_SUSET）
+expect_err "普通用户不得开启逃逸白名单" low_u "SET jt_sec.allow_escape_paths=on" "ERROR|FATAL|permission"
+
+say "=== 11. 统一错误码（docs/05 §6.2）==="
+# 客户端/审计采集器应能按 SQLSTATE 稳定识别 MAC 拒绝，而不必解析文本
+code=$("$RT/bin/psql" -h /tmp -p $P -U low_u -d $DB -X 2>&1 <<'SQLEOF' | grep -oE "JT[0-9]{3}" | head -1
+\set VERBOSITY verbose
+SELECT count(*) FROM secret_tbl;
+SQLEOF
+)
+[ "$code" = "JT001" ] && ok "读拒绝 SQLSTATE = JT001" || no "读拒绝 SQLSTATE = JT001" "got=$code"
+code=$("$RT/bin/psql" -h /tmp -p $P -U "$ADMIN" -d $DB -X 2>&1 <<'SQLEOF' | grep -oE "JT[0-9]{3}" | head -1
+\set VERBOSITY verbose
+SET jt_sec.role='secadmin';
+SELECT jt_sec_set_session_label('30:finance');
+INSERT INTO public_tbl VALUES(1);
+SQLEOF
+)
+[ "$code" = "JT002" ] && ok "写拒绝 SQLSTATE = JT002" || no "写拒绝 SQLSTATE = JT002" "got=$code"
+code=$("$RT/bin/psql" -h /tmp -p $P -U "$ADMIN" -d $DB -X 2>&1 <<'SQLEOF' | grep -oE "JT[0-9]{3}" | head -1
+\set VERBOSITY verbose
+COPY public_tbl TO '/tmp/jtsec-esc-out2.txt';
+SQLEOF
+)
+[ "$code" = "JT004" ] && ok "逃逸路径 SQLSTATE = JT004" || no "逃逸路径 SQLSTATE = JT004" "got=$code"
+
+say "=== 12. E2 审计事件（docs/02 §7.2）==="
+# MAC 拒绝必须产生机器可读事件（内核产出、审计平面链化）
+LOGF="${JTDB_JTSEC_LOGFILE:-/tmp/jtsec-runtime.log}"
+if [ -f "$LOGF" ]; then
+  ev=$(grep -o 'JTDB-AUDIT-E2 {[^}]*}' "$LOGF" 2>/dev/null | tail -1)
+  if [ -n "$ev" ]; then ok "MAC 拒绝产生 E2 审计事件"
+  else no "MAC 拒绝产生 E2 审计事件" "日志 $LOGF 中无 JTDB-AUDIT-E2"; fi
+  if printf '%s' "$ev" | grep -q '"event":"mac_denied"'; then ok "事件类型为 mac_denied"
+  else no "事件类型为 mac_denied" "$ev"; fi
+  # 不含业务明文（只放标签/主体/摘要）
+  if printf '%s' "$ev" | grep -qE '"detail"|VALUES'; then no "事件不含业务明文" "$ev"
+  else ok "事件不含业务明文"; fi
+else
+  say "  SKIP  E2 事件验证（未设 JTDB_JTSEC_LOGFILE）"
+fi
 
 # ---------------------------------------------------------------------------
 say "=== 结果 ==="

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 08:58:47 +0800
-Subject: [PATCH 1/8] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8?=
+Subject: [PATCH 1/9] =?UTF-8?q?JTDB=20=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8?=
  =?UTF-8?q?=20v1=EF=BC=9AMLS=20=E6=A0=87=E7=AD=BE=E6=A8=A1=E5=9E=8B=20+=20?=
  =?UTF-8?q?=E4=B8=89=E6=9D=83=E5=88=86=E7=AB=8B=20+=20=E8=B6=85=E7=AE=A1?=
  =?UTF-8?q?=E5=9B=B4=E6=A0=8F=20+=20MAC=20=E6=A3=80=E6=9F=A5?=
@@ -750,7 +750,7 @@ index 0000000000..c3bf6444a8
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 09:21:29 +0800
-Subject: [PATCH 2/8] =?UTF-8?q?jt=5Fsec.c:=20=E8=A1=A5=E5=85=A8=20includes?=
+Subject: [PATCH 2/9] =?UTF-8?q?jt=5Fsec.c:=20=E8=A1=A5=E5=85=A8=20includes?=
  =?UTF-8?q?=EF=BC=88guc=5Ftables.h/varatt.h=EF=BC=89=EF=BC=8C=E4=BF=AE?=
  =?UTF-8?q?=E5=A4=8D=20PG18=20=E6=8B=86=E5=88=86=E5=A4=B4=E6=96=87?=
  =?UTF-8?q?=E4=BB=B6?=
@@ -779,7 +779,7 @@ index 79f82fa22f..8fc329b60b 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sat, 19 Sep 2026 13:00:38 +0800
-Subject: [PATCH 3/8] =?UTF-8?q?=E5=90=8C=E6=AD=A5=E5=9F=BA=E7=A1=802=20?=
+Subject: [PATCH 3/9] =?UTF-8?q?=E5=90=8C=E6=AD=A5=E5=9F=BA=E7=A1=802=20?=
  =?UTF-8?q?=E6=9E=84=E5=BB=BA=E9=AA=8C=E8=AF=81=E5=90=8E=E7=9A=84=E4=BF=AE?=
  =?UTF-8?q?=E6=AD=A3=EF=BC=88guc=5Ftables.c=20GUC=20=E6=9D=A1=E7=9B=AE=20+?=
  =?UTF-8?q?=20assign=5Fhook=20=E9=9D=9E=20static=20+=20includes=EF=BC=89?=
@@ -948,7 +948,7 @@ index c3bf6444a8..f263905941 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 07:54:03 +0800
-Subject: [PATCH 4/8] =?UTF-8?q?jtsec=20=E6=89=A7=E8=A1=8C=E7=82=B9?=
+Subject: [PATCH 4/9] =?UTF-8?q?jtsec=20=E6=89=A7=E8=A1=8C=E7=82=B9?=
  =?UTF-8?q?=E9=92=A9=E5=AD=90=EF=BC=9AExecutorStart=20(DML=20=E8=AF=BB?=
  =?UTF-8?q?=E8=B7=AF=E5=BE=84=20MAC)=20+=20ProcessUtility=20(DDL=20?=
  =?UTF-8?q?=E8=A7=92=E8=89=B2=E6=A3=80=E6=9F=A5)?=
@@ -1225,7 +1225,7 @@ index f263905941..541c4fd0ea 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 12:31:06 +0800
-Subject: [PATCH 5/8] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E6=A0=87?=
+Subject: [PATCH 5/9] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E6=A0=87?=
  =?UTF-8?q?=E7=AD=BE=E8=A7=A3=E6=9E=90=E5=B4=A9=E6=BA=83=E3=80=81=E9=9D=99?=
  =?UTF-8?q?=E9=BB=98=E9=99=8D=E5=AF=86=E4=B8=8E=20fail-open=20=E8=B7=AF?=
  =?UTF-8?q?=E5=BE=84=EF=BC=8C=E9=92=A9=E5=AD=90=E9=A6=96=E6=AC=A1=E5=8F=AF?=
@@ -1513,7 +1513,7 @@ index 541c4fd0ea..0f1e14f917 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 13:39:42 +0800
-Subject: [PATCH 6/8] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E5=85=AD?=
+Subject: [PATCH 6/9] =?UTF-8?q?jtsec=EF=BC=9A=E4=BF=AE=E5=A4=8D=E5=85=AD?=
  =?UTF-8?q?=E4=B8=AA=E9=98=BB=E6=96=AD=E7=BA=A7=E7=BC=BA=E9=99=B7=EF=BC=8C?=
  =?UTF-8?q?=E5=AE=89=E5=85=A8=E5=86=85=E6=A0=B8=E9=A6=96=E6=AC=A1=E7=9C=9F?=
  =?UTF-8?q?=E6=AD=A3=E5=8F=AF=E7=94=A8=EF=BC=88=E8=BF=90=E8=A1=8C=E6=97=B6?=
@@ -1972,7 +1972,7 @@ index 0f1e14f917..47ce78117a 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 14:38:45 +0800
-Subject: [PATCH 7/8] =?UTF-8?q?jtsec=EF=BC=9A=E5=AE=9E=E7=8E=B0=E5=86=99?=
+Subject: [PATCH 7/9] =?UTF-8?q?jtsec=EF=BC=9A=E5=AE=9E=E7=8E=B0=E5=86=99?=
  =?UTF-8?q?=E8=B7=AF=E5=BE=84=EF=BC=88*=20=E5=B1=9E=E6=80=A7=EF=BC=89?=
  =?UTF-8?q?=E4=B8=8E=E8=B6=85=E7=AE=A1=E5=9B=B4=E6=A0=8F=EF=BC=8C=E4=BF=AE?=
  =?UTF-8?q?=E5=A4=8D=E5=86=99=E9=99=8D=E5=AF=86=E7=BC=BA=E5=8F=A3=EF=BC=88?=
@@ -2602,7 +2602,7 @@ index 47ce78117a..7fb337a971 100644
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: fushilu <fulu0709@foxmail.com>
 Date: Sun, 20 Sep 2026 14:50:39 +0800
-Subject: [PATCH 8/8] =?UTF-8?q?jtsec=EF=BC=9A=E8=A1=A5=20COPY=20/=20TRUNCA?=
+Subject: [PATCH 8/9] =?UTF-8?q?jtsec=EF=BC=9A=E8=A1=A5=20COPY=20/=20TRUNCA?=
  =?UTF-8?q?TE=20=E6=89=A7=E8=A1=8C=E7=82=B9=E7=9A=84=E5=86=99=E6=A3=80?=
  =?UTF-8?q?=E6=9F=A5=EF=BC=8C=E4=BF=AE=E5=A4=8D=E5=86=99=E9=99=8D=E5=AF=86?=
  =?UTF-8?q?=E7=BB=95=E8=BF=87=EF=BC=88=E8=BF=90=E8=A1=8C=E6=97=B6=2041/41?=
@@ -2703,3 +2703,368 @@ index 1c8ce9392d..ed8c75b36a 100644
  			default:
  				break;
  		}
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: fushilu <fulu0709@foxmail.com>
+Date: Sun, 20 Sep 2026 15:15:10 +0800
+Subject: [PATCH 9/9] =?UTF-8?q?jtsec=EF=BC=9A=E9=80=83=E9=80=B8=E8=B7=AF?=
+ =?UTF-8?q?=E5=BE=84=E5=9B=B4=E6=A0=8F=20+=20=E7=BB=9F=E4=B8=80=E9=94=99?=
+ =?UTF-8?q?=E8=AF=AF=E7=A0=81=20+=20E2=20=E5=AE=A1=E8=AE=A1=E4=BA=8B?=
+ =?UTF-8?q?=E4=BB=B6=EF=BC=88=E8=BF=90=E8=A1=8C=E6=97=B6=2052/52=20?=
+ =?UTF-8?q?=E7=BB=BF=EF=BC=89?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+补 docs/02 §3.5 与 docs/05 §6.2 中三处规格要求但未实现的能力：
+
+1. 逃逸路径默认禁用（§3.5）：COPY PROGRAM 直接 popen shell、COPY 文件形式
+   读写服务器任意文件 —— 不拦则任何标签检查都可被"把数据抄到文件再读出来"
+   绕过。新增 jt_sec.allow_escape_paths（默认 off，PGC_SUSET），**独立于
+   MAC 开关**（否则 MAC 处于阶段 0 兼容模式时可自由读写服务器文件）。
+
+   实测踩坑：首版把围栏放在无豁免的位置，导致 **initdb 直接 FATAL** ——
+   initdb 自身要用 COPY information_schema.sql_features FROM '<share>/...'
+   装载目录数据。判据须用 !IsUnderPostmaster（initdb 的 COPY 发生在
+   post-bootstrap 阶段，那时已是 NormalProcessing 但未 fork 自 postmaster，
+   IsBootstrapProcessingMode() 拦不住它）；真实客户端后端一律受管。
+
+2. 统一错误码（§6.2）：新增 SQLSTATE class JT（PG 原无 J 类）——
+   JT001 读拒绝 / JT002 写拒绝 / JT003 标签损坏 / JT004 逃逸路径，
+   经 errcodes.txt 正规机制生成。客户端与审计采集器可按 SQLSTATE 稳定识别
+   MAC 拒绝，不必解析会随措辞调整且可能本地化的错误文本。
+
+3. MAC 拒绝的 E2 审计事件（§7.2）：内核产生机器可读结构化事件
+   （JTDB-AUDIT-E2 + JSON 字段），由审计采集器读取并补 hash 链。分工理由：
+   hash 链需 SM3，而 PG 无 SM3 且 docs/12 §3 禁止组件自行实现密码原语，
+   故内核负责"产生事件"、审计平面负责"链化与持久化"。事件只放标签/主体/
+   摘要，不含业务明文（§3.3）。发出顺序必须在 ereport(ERROR) 之前 ——
+   ERROR 会 longjmp 出栈。
+
+运行时 52/52（主套件扩为 12 节）：原 41 项无回归 + §10 逃逸围栏 5 项 +
+§11 统一错误码 3 项 + §12 E2 事件 3 项。另修 §8 的 COPY 用例：它们测的是
+MAC 方向语义，需显式开白名单或改用 STDIN/STDOUT（非逃逸路径），否则会先被
+§10 的围栏拦下（fail-closed 顺序正确）。
+---
+ src/backend/jtsec/jt_sec.c          |   1 +
+ src/backend/jtsec/jt_sec_hooks.c    | 154 +++++++++++++++++++++++++++-
+ src/backend/utils/errcodes.txt      |  10 ++
+ src/backend/utils/misc/guc_tables.c |  22 ++--
+ src/include/jtsec/jt_sec.h          |   9 ++
+ 5 files changed, 185 insertions(+), 11 deletions(-)
+
+diff --git a/src/backend/jtsec/jt_sec.c b/src/backend/jtsec/jt_sec.c
+index 5076c63359..1df1a002a0 100644
+--- a/src/backend/jtsec/jt_sec.c
++++ b/src/backend/jtsec/jt_sec.c
+@@ -26,6 +26,7 @@
+ 
+ bool		jt_sec_mac_enabled = false;
+ bool		jt_sec_superuser_fence = false;
++bool		jt_sec_allow_escape_paths = false;
+ 
+ /* 会话安全上下文（TopMemoryContext 分配，会话生命周期） */
+ static JtSecurityContext jt_sec_ctx;
+diff --git a/src/backend/jtsec/jt_sec_hooks.c b/src/backend/jtsec/jt_sec_hooks.c
+index ed8c75b36a..6394cb39f1 100644
+--- a/src/backend/jtsec/jt_sec_hooks.c
++++ b/src/backend/jtsec/jt_sec_hooks.c
+@@ -21,6 +21,8 @@
+ #include "catalog/catalog.h"
+ #include "catalog/namespace.h"
+ #include "catalog/objectaccess.h"
++#include "catalog/pg_database.h"
++#include "commands/dbcommands.h"
+ #include "commands/seclabel.h"
+ #include "executor/executor.h"
+ #include "fmgr.h"
+@@ -31,7 +33,10 @@
+ #include "nodes/plannodes.h"
+ #include "parser/parsetree.h"
+ #include "tcop/utility.h"
++#include "utils/acl.h"
++#include "utils/builtins.h"
+ #include "utils/rel.h"
++#include "utils/syscache.h"
+ 
+ /* provider 名（SECURITY LABEL FOR 'jt' ON ...） */
+ #define JT_SEC_PROVIDER "jt"
+@@ -109,7 +114,7 @@ static void
+ jt_sec_report_malformed_label(Oid relid, JtAccessMode mode)
+ {
+ 	ereport(ERROR,
+-			(errcode(ERRCODE_DATA_CORRUPTED),
++			(errcode(ERRCODE_JT_MAC_LABEL_MALFORMED),
+ 			 errmsg("MAC: label of relation %u is malformed (mode %c)",
+ 					relid, (char) mode),
+ 			 errdetail("Stored label cannot be parsed. Access is denied rather than "
+@@ -117,6 +122,73 @@ jt_sec_report_malformed_label(Oid relid, JtAccessMode mode)
+ 			 errhint("Have jt_secadmin repair the label with SECURITY LABEL FOR 'jt'.")));
+ }
+ 
++/* ------------------------------------------------------------------------
++ * MAC 拒绝的 E2 审计事件（docs/05 §6.2、docs/02 §7.2）
++ * ------------------------------------------------------------------------ */
++
++/*
++ * jt_sec_emit_mac_denied —— 发出 MAC 拒绝的 E2 审计事件。
++ *
++ * **为什么在这里用 LOG 而非直接写审计平面**：
++ * 审计事件需要 hash 链（h(n)=SM3(event(n)‖h(n-1))，docs/02 §7.3），而
++ * PostgreSQL 不提供 SM3（只有 MD5/SHA 系），且 docs/12 §3 明确禁止组件
++ * 自行实现密码原语。因此**内核负责"产生结构化事件"，审计平面负责"链接
++ * 与持久化"**：内核把事件以**机器可读**形式写入 PG 日志，由审计采集器
++ * （jt-audit-ingest 侧）读取、补 hash 链、落 WAL 与存储。
++ *
++ * 事件必须机器可读而非仅人读文本，故：
++ *   - 错误码用统一的 JT001-JT004（docs/05 §6.2"统一错误码"）；
++ *   - 事件体以 `JTDB-AUDIT-E2` 前缀 + 稳定字段名输出（JSON 形式），
++ *     采集器按前缀过滤、按字段名解析，不依赖本地化文本；
++ *   - `detail` 只放摘要与标签，**不放业务明文**（docs/02 §3.3）。
++ *
++ * E2 语义（docs/02 §7.2）：事务提交时同步写本地 journal。内核不持有
++ * journal（那是审计平面的职责），故此处 LOG 之后由采集器保证同步落盘；
++ * 若审计平面中断，按 §7.2 的失效矩阵应"阻断对应操作"——该阻断由审计
++ * 平面的健康状态驱动（`jt_sec.audit_required`），不在本函数内做。
++ */
++static void
++jt_sec_emit_mac_denied(const char *action, const char *object_kind,
++					   const char *object_name, const JtLabel *object_label,
++					   const JtLabel *subject_label)
++{
++	char		objlabel_buf[64];
++	char		subjlabel_buf[64];
++	char	   *objlabel_txt;
++	char	   *subjlabel_txt;
++
++	if (object_label != NULL)
++	{
++		objlabel_txt = jt_label_to_string(object_label);
++		strlcpy(objlabel_buf, objlabel_txt, sizeof(objlabel_buf));
++		pfree(objlabel_txt);
++	}
++	else
++		strlcpy(objlabel_buf, "(unlabeled)", sizeof(objlabel_buf));
++
++	if (subject_label != NULL)
++	{
++		subjlabel_txt = jt_label_to_string(subject_label);
++		strlcpy(subjlabel_buf, subjlabel_txt, sizeof(subjlabel_buf));
++		pfree(subjlabel_txt);
++	}
++	else
++		strlcpy(subjlabel_buf, "(none)", sizeof(subjlabel_buf));
++
++	ereport(LOG,
++			(errcode(ERRCODE_JT_MAC_READ_DENIED),
++			 errmsg("JTDB-AUDIT-E2 {\"event\":\"mac_denied\","
++					"\"action\":\"%s\",\"object_kind\":\"%s\","
++					"\"object\":\"%s\",\"object_label\":\"%s\","
++					"\"subject_label\":\"%s\",\"user\":\"%s\","
++					"\"database\":\"%s\",\"backend_pid\":%d}",
++					action, object_kind, object_name,
++					objlabel_buf, subjlabel_buf,
++					GetUserNameFromId(GetUserId(), true),
++					get_database_name(MyDatabaseId) ? get_database_name(MyDatabaseId) : "(none)",
++					MyProcPid)));
++}
++
+ /*
+  * jt_sec_check_table_access —— 检查表的 MAC 访问权限。
+  */
+@@ -168,7 +240,7 @@ jt_sec_check_rel_label(Oid relid, JtAccessMode mode, const char *verb)
+ 
+ 		table_close(rel, lockmode);
+ 		ereport(ERROR,
+-				(errcode(ERRCODE_DATA_CORRUPTED),
++				(errcode(ERRCODE_JT_MAC_LABEL_MALFORMED),
+ 				 errmsg("MAC: label of table \"%s\" is malformed", relname),
+ 				 errdetail("Stored label cannot be parsed. %s is denied rather than "
+ 						   "treating the table as unclassified.", verb),
+@@ -180,18 +252,27 @@ jt_sec_check_rel_label(Oid relid, JtAccessMode mode, const char *verb)
+ 	{
+ 		char	   *relname = pstrdup(RelationGetRelationName(rel));
+ 		char	   *labeltxt = pstrdup(jt_label_to_string(obj_label));
++		const JtLabel *subj = jt_sec_context_get_session_label();
+ 
+ 		table_close(rel, lockmode);
++
++		/*
++		 * 先发 E2 审计事件再报错：ereport(ERROR) longjmp 出栈，之后再发
++		 * 就来不及了（docs/02 §7.2 要求 MAC 拒绝必发 E2）。
++		 */
++		jt_sec_emit_mac_denied(mode == JT_ACCESS_READ ? "read" : "write",
++							   "table", relname, obj_label, subj);
++
+ 		if (mode == JT_ACCESS_READ)
+ 			ereport(ERROR,
+-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++					(errcode(ERRCODE_JT_MAC_READ_DENIED),
+ 					 errmsg("MAC: read denied for table \"%s\" (label %s)",
+ 							relname, labeltxt),
+ 					 errdetail("Simple security property: subject label "
+ 							   "does not dominate object label.")));
+ 		else
+ 			ereport(ERROR,
+-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
++					(errcode(ERRCODE_JT_MAC_WRITE_DENIED),
+ 					 errmsg("MAC: write denied for table \"%s\" (label %s)",
+ 							relname, labeltxt),
+ 					 errdetail("*-property: object label does not dominate the "
+@@ -396,7 +477,14 @@ jt_sec_ProcessUtility(PlannedStmt *pstmt,
+ 					  DestReceiver *dest,
+ 					  QueryCompletion *qc)
+ {
+-	/* MAC 关闭时跳过全部检查 */
++	/*
++	 * MAC 关闭时跳过全部检查。
++	 *
++	 * 例外：**逃逸路径围栏独立于 MAC 开关**（见下）——它拦的是"绕过内核
++	 * 直接读写服务器文件/执行程序"的能力，与标签检查是否启用无关；若跟随
++	 * MAC 开关，攻击者只要 MAC 处于阶段 0 兼容模式（默认 off）即可自由
++	 * 读写服务器文件。故逃逸检查在 MAC 判断之外单独执行。
++	 */
+ 	if (jt_sec_mac_enabled)
+ 	{
+ 		Node	   *parsetree = pstmt->utilityStmt;
+@@ -482,6 +570,62 @@ jt_sec_ProcessUtility(PlannedStmt *pstmt,
+ 		}
+ 	}
+ 
++	/*
++	 * 逃逸路径围栏（docs/02 §3.5）。
++	 *
++	 * 与 MAC 开关**无关**：这些路径让主体绕过内核直接接触服务器文件系统或
++	 * 执行外部程序（COPY ... FROM PROGRAM 直接 popen shell；COPY 文件形式
++	 * 读写服务器任意文件；大对象服务端读写同理）。若不拦，任何标签检查都
++	 * 可被"把数据抄到文件再读出来"绕过。
++	 *
++	 * 默认**禁用**（`jt_sec.allow_escape_paths = off`），业务必需时由
++	 * secadmin 开启白名单（ADR-012）。注意：PG 自身的角色门（
++	 * pg_read_server_files 等）只是**必要条件**——它由 DBA 授予，而
++	 * secadmin 未必掌握 DBA；本围栏是独立的第二道门，使"DBA 误授权"不至于
++	 * 直接变成"绕过 MAC"。
++	 *
++	 * **非后端进程豁免（`!IsUnderPostmaster`）**：`initdb` 自身要用
++	 * `COPY information_schema.sql_features FROM '<share>/sql_features.txt'`
++	 * 装载目录数据（实测：不豁免则 initdb 直接 FATAL，数据库都建不起来）。
++	 * 该进程由 initdb 直接拉起、走 `InitProcessing` 模式、**不接受客户端
++	 * 连接**，不是围栏要防的对象。
++	 *
++	 * 判据用 `!IsUnderPostmaster` 而非 `IsBootstrapProcessingMode()`：
++	 * 实测失败的 COPY 发生在 post-bootstrap 阶段，那时已是 NormalProcessing
++	 * 但**仍未** fork 自 postmaster —— `IsBootstrapProcessingMode()` 拦不住
++	 * 它。真实客户端后端一律 `IsUnderPostmaster == true`，全部受管。
++	 */
++	if (!jt_sec_allow_escape_paths && IsUnderPostmaster)
++	{
++		Node	   *parsetree = pstmt->utilityStmt;
++
++		if (nodeTag(parsetree) == T_CopyStmt)
++		{
++			CopyStmt  *stmt = (CopyStmt *) parsetree;
++
++			if (stmt->is_program)
++				ereport(ERROR,
++						(errcode(ERRCODE_JT_MAC_ESCAPE_PATH_DENIED),
++						 errmsg("MAC: COPY ... %s PROGRAM is disabled",
++								stmt->is_from ? "FROM" : "TO"),
++						 errdetail("Escape path: COPY PROGRAM executes an external "
++								   "command and can bypass kernel MAC."),
++						 errhint("Have jt_secadmin enable jt_sec.allow_escape_paths "
++								 "if this is required.")));
++
++			/* 文件形式的 COPY 读写服务器文件系统，同样属逃逸路径 */
++			if (stmt->filename != NULL && stmt->filename[0] != '\0')
++				ereport(ERROR,
++						(errcode(ERRCODE_JT_MAC_ESCAPE_PATH_DENIED),
++						 errmsg("MAC: COPY ... %s '<file>' is disabled",
++								stmt->is_from ? "FROM" : "TO"),
++						 errdetail("Escape path: server-side file access can bypass "
++								   "kernel MAC."),
++						 errhint("Use COPY ... FROM STDIN / TO STDOUT instead, or have "
++								 "jt_secadmin enable jt_sec.allow_escape_paths.")));
++		}
++	}
++
+ 	if (prev_ProcessUtility)
+ 		prev_ProcessUtility(pstmt, queryString, readOnlyTree, context,
+ 							params, queryEnv, dest, qc);
+diff --git a/src/backend/utils/errcodes.txt b/src/backend/utils/errcodes.txt
+index c96aa7c49e..19636ac664 100644
+--- a/src/backend/utils/errcodes.txt
++++ b/src/backend/utils/errcodes.txt
+@@ -499,3 +499,13 @@ Section: Class XX - Internal Error
+ XX000    E    ERRCODE_INTERNAL_ERROR                                         internal_error
+ XX001    E    ERRCODE_DATA_CORRUPTED                                         data_corrupted
+ XX002    E    ERRCODE_INDEX_CORRUPTED                                        index_corrupted
++
++Section: Class JT - JTDB Security Kernel (MAC)
++
++# JTDB 安全内核的 MAC 判决错误码（docs/05 §6.2 要求"执行点返回统一错误码"）。
++# 客户端与审计采集器可据此稳定识别"被 MAC 拒绝"，而不必解析错误文本
++# （文本会随措辞调整，且可能被本地化）。
++JT001    E    ERRCODE_JT_MAC_READ_DENIED                                    jt_mac_read_denied
++JT002    E    ERRCODE_JT_MAC_WRITE_DENIED                                   jt_mac_write_denied
++JT003    E    ERRCODE_JT_MAC_LABEL_MALFORMED                                jt_mac_label_malformed
++JT004    E    ERRCODE_JT_MAC_ESCAPE_PATH_DENIED                             jt_mac_escape_path_denied
+diff --git a/src/backend/utils/misc/guc_tables.c b/src/backend/utils/misc/guc_tables.c
+index 67785b7ebb..994bfa5680 100644
+--- a/src/backend/utils/misc/guc_tables.c
++++ b/src/backend/utils/misc/guc_tables.c
+@@ -514,12 +514,7 @@ extern const struct config_enum_entry dynamic_shared_memory_options[];
+ /* JTDB security kernel (ADR-011/012) */
+ extern bool	jt_sec_mac_enabled;
+ extern bool	jt_sec_superuser_fence;
+-extern int	jt_sec_role_guc;
+-extern void	jt_sec_role_assign_hook(int newval, void *extra);
+-
+-/* JTDB security kernel (ADR-011/012) */
+-extern bool	jt_sec_mac_enabled;
+-extern bool	jt_sec_superuser_fence;
++extern bool	jt_sec_allow_escape_paths;
+ extern int	jt_sec_role_guc;
+ extern void	jt_sec_role_assign_hook(int newval, void *extra);
+ 
+@@ -2015,6 +2010,21 @@ struct config_bool ConfigureNamesBool[] =
+ 		false,
+ 		NULL, NULL, NULL
+ 	},
++	{
++		/*
++		 * 逃逸路径白名单（docs/02 §3.5）。默认 off = 禁用 COPY PROGRAM 与
++		 * COPY 文件形式。**与 MAC 开关独立**：拦的是绕过内核直接接触文件
++		 * 系统/执行程序的能力。secadmin 可控（PGC_SUSET）。
++		 */
++		{"jt_sec.allow_escape_paths", PGC_SUSET, CUSTOM_OPTIONS,
++			gettext_noop("Allow escape paths (COPY PROGRAM, server-side file COPY)."),
++			"Disabled by default: these paths bypass kernel MAC.",
++			GUC_NOT_IN_SAMPLE
++		},
++		&jt_sec_allow_escape_paths,
++		false,
++		NULL, NULL, NULL
++	},
+ 
+ 	{
+ 		{"lo_compat_privileges", PGC_SUSET, COMPAT_OPTIONS_PREVIOUS,
+diff --git a/src/include/jtsec/jt_sec.h b/src/include/jtsec/jt_sec.h
+index 7fb337a971..d9f619c62d 100644
+--- a/src/include/jtsec/jt_sec.h
++++ b/src/include/jtsec/jt_sec.h
+@@ -100,6 +100,15 @@ extern bool jt_sec_mac_enabled;
+ /* 超管围栏（jt_sec.mac_enabled 时 superuser 也受 MAC 约束） */
+ extern bool jt_sec_superuser_fence;
+ 
++/*
++ * 逃逸路径白名单（docs/02 §3.5）。
++ *
++ * off（默认）= 禁用 COPY PROGRAM 与 COPY 文件形式（服务器端文件读写）；
++ * on = 放行。**独立于 MAC 开关**——它拦的是绕过内核直接接触文件系统/
++ * 执行程序的能力，与标签检查是否启用无关。仅 secadmin 可改（PGC_SUSET）。
++ */
++extern bool jt_sec_allow_escape_paths;
++
+ /* 当前会话安全上下文 */
+ extern JtSecurityContext *jt_sec_context;
+ 
