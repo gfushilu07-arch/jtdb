@@ -1,0 +1,27 @@
+[package]
+name = "jt-audit-ingest"
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-JTDB-Proprietary"
+
+[[bin]]
+name = "jt-audit-ingest"
+path = "src/main.rs"
+
+[dependencies]
+jt-crypto-sm = { path = "../../libs/jt-crypto-sm" }
+jt-crypto-api = { path = "../../libs/jt-crypto-api" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+parking_lot = "0.12"
+hex = "0.4"
+clap = { version = "4", features = ["derive"] }
+tempfile = "3"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
