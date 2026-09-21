@@ -1,0 +1,10 @@
+[package]
+name = "kms-lease-e2e"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jt-key-epoch = { path = "../../libs/jt-key-epoch" }
+jt-crypto-api = { path = "../../libs/jt-crypto-api" }
+jt-crypto-sm = { path = "../../libs/jt-crypto-sm" }
+hex = "0.4"

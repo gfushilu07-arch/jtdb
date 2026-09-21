@@ -213,6 +213,44 @@ impl KeyProvider for KmsLeaseProvider {
     }
 }
 
+/// 证明摘要来源。
+///
+/// **为什么必须动态**：KMS 侧有防重放（`check_attestation_fresh`：同一摘要
+/// 只接受一次）。**实测**：第二次用同一摘要请求 `/v1/lease/issue` 返回
+/// 409 `{"error":"stale attestation (replay rejected)"}`。故静态摘要对着
+/// 真实 KMS **只能用一次**，续租必然失败。
+///
+/// 生产应接 [`crate::kms_provider::AttestationSource::Collector`]：每次调用
+/// 重新采集证据（含 DRBG nonce），摘要自然唯一。
+pub enum AttestationSource {
+    /// 固定摘要（**仅测试/单次使用**；生产禁用——第二次请求必被 KMS 拒）。
+    Fixed(String),
+    /// 动态采集：每次调用返回新摘要（生产路径）。
+    ///
+    /// 闭包由装配层提供，通常包装 `jt-attest::EvidenceCollector::collect()`
+    /// 并取其 `digest()`。
+    Dynamic(Box<dyn Fn() -> Result<String, String> + Send + Sync>),
+}
+
+impl std::fmt::Debug for AttestationSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AttestationSource::Fixed(s) => f.debug_tuple("Fixed").field(&format!("{}...", &s[..s.len().min(16)])).finish(),
+            AttestationSource::Dynamic(_) => f.write_str("Dynamic(<collector>)"),
+        }
+    }
+}
+
+impl AttestationSource {
+    /// 取本次请求的摘要。
+    fn next(&self) -> Result<String, KmsError> {
+        match self {
+            AttestationSource::Fixed(s) => Ok(s.clone()),
+            AttestationSource::Dynamic(f) => f().map_err(KmsError::Unavailable),
+        }
+    }
+}
+
 /// HTTP KMS 客户端（生产）。
 ///
 /// 端点（services/jt-kms/src/api.rs）：
@@ -225,22 +263,31 @@ impl KeyProvider for KmsLeaseProvider {
 pub struct HttpKmsClient {
     endpoint: String,
     node_id: String,
-    /// 最新证明摘要（SM3 hex）——KMS 校验新鲜度。
-    attestation_digest: RwLock<String>,
+    /// 证明摘要来源（每次请求取一次；见 [`AttestationSource`]）。
+    attestation: AttestationSource,
 }
 
 impl HttpKmsClient {
+    /// 用固定摘要构造（**仅测试**：第二次请求会被 KMS 防重放拒绝）。
     pub fn new(endpoint: impl Into<String>, node_id: impl Into<String>, att_hex: impl Into<String>) -> Self {
         HttpKmsClient {
             endpoint: endpoint.into(),
             node_id: node_id.into(),
-            attestation_digest: RwLock::new(att_hex.into()),
+            attestation: AttestationSource::Fixed(att_hex.into()),
         }
     }
 
-    /// 更新证明摘要（attest 刷新后调用）。
-    pub fn update_attestation(&self, att_hex: impl Into<String>) {
-        *self.attestation_digest.write() = att_hex.into();
+    /// 用动态采集构造（**生产**：每次请求重新采集，摘要唯一）。
+    pub fn with_collector(
+        endpoint: impl Into<String>,
+        node_id: impl Into<String>,
+        collect: Box<dyn Fn() -> Result<String, String> + Send + Sync>,
+    ) -> Self {
+        HttpKmsClient {
+            endpoint: endpoint.into(),
+            node_id: node_id.into(),
+            attestation: AttestationSource::Dynamic(collect),
+        }
     }
 
     fn post_json(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, KmsError> {
@@ -256,7 +303,8 @@ impl HttpKmsClient {
 
 impl KmsClient for HttpKmsClient {
     fn fetch_dek(&self, scope: &DekScope, lease_secs: u64) -> Result<[u8; 16], KmsError> {
-        let att = self.attestation_digest.read().clone();
+        // 每次请求取一次摘要（Dynamic 会重新采集，保证唯一；防重放要求）
+        let att = self.attestation.next()?;
         let body = serde_json::json!({
             "timeline_id": hex::encode(scope.timeline_id),
             "key_epoch": scope.key_epoch,
@@ -473,6 +521,38 @@ mod tests {
         assert_eq!(renew_interval_secs(900), Duration::from_secs(450));
         assert_eq!(renew_interval_secs(1), Duration::from_secs(1), "下限 1 秒");
         assert_eq!(renew_interval_secs(0), Duration::from_secs(1), "零租约退化到 1 秒");
+    }
+
+    #[test]
+    fn dynamic_attestation_source_yields_distinct_digests() {
+        // 回归保护：静态摘要对着真实 KMS 只能用一次（防重放，实测 409）。
+        // Dynamic 来源每次调用必须给出不同摘要。
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let n = Arc::new(AtomicU64::new(0));
+        let n2 = n.clone();
+        let src = AttestationSource::Dynamic(Box::new(move || {
+            let v = n2.fetch_add(1, Ordering::SeqCst);
+            Ok(format!("digest-{v}"))
+        }));
+        let a = src.next().unwrap();
+        let b = src.next().unwrap();
+        let c = src.next().unwrap();
+        assert_ne!(a, b);
+        assert_ne!(b, c);
+    }
+
+    #[test]
+    fn fixed_attestation_source_repeats_same_digest() {
+        // Fixed 来源的语义（仅测试用）：同一摘要重复给出——正是会被 KMS
+        // 防重放拒绝的行为，故生产必须用 Dynamic。
+        let src = AttestationSource::Fixed("same".into());
+        assert_eq!(src.next().unwrap(), src.next().unwrap());
+    }
+
+    #[test]
+    fn dynamic_source_error_propagates() {
+        let src = AttestationSource::Dynamic(Box::new(|| Err("collector down".into())));
+        assert!(matches!(src.next(), Err(KmsError::Unavailable(_))));
     }
 
     #[test]
