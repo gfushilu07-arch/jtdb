@@ -428,3 +428,222 @@ fn not_a_live_segment_is_rejected() {
     let r = read_live_header(&path, &Sm3Digest);
     assert!(matches!(r, Err(ObjectError::InvalidHeader(_))), "非活段须拒绝");
 }
+
+// ============================================================================
+// open_existing / reset_to（Safekeeper 重启续写与 WAL 截断所需）
+// ============================================================================
+
+/// 重启续写：写一半 → 关文件 → open_existing 恢复位置 → 继续写 → 读回全量。
+#[test]
+fn open_existing_recovers_write_position_and_tail() {
+    let d = tmpdir("openex");
+    let path = d.join("seg.partial");
+    let cs = layout().chunk_size as usize; // 256
+
+    // 写 1.5 个 chunk（尾块为半块）后 flush
+    let n1 = cs + 100;
+    let part1: Vec<u8> = (0..n1).map(|i| (i % 251) as u8).collect();
+    {
+        let mut w = LiveWalWriter::create(
+            &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, layout(), TL, 1, 3, 1, &dek(),
+        )
+        .unwrap();
+        w.write_at(0, &part1).unwrap();
+        w.flush().unwrap();
+    }
+
+    // 恢复：写位置须为 n1，且尾块明文被解密恢复（不能丢）
+    let mut w = LiveWalWriter::open_existing(
+        &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, &dek(),
+    )
+    .unwrap();
+    assert_eq!(w.durable_len(), n1 as u64, "恢复的 durable 长度须等于已 flush 长度");
+    assert_eq!(w.durable_len(), n1 as u64);
+
+    // 继续写：从 n1 起追加（若位置未恢复，这里会因 offset 不匹配而失败）
+    let part2: Vec<u8> = (0..200).map(|i| (i % 97) as u8).collect();
+    w.write_at(n1 as u64, &part2).unwrap();
+    w.flush().unwrap();
+
+    // 读回：前段（含恢复的尾块）+ 后段都须正确
+    let got = read_live_plain_at(&path, &Sm4Gcm, &Sm3Digest, &dek(), 0, n1 + 200).unwrap();
+    let mut want = part1.clone();
+    want.extend_from_slice(&part2);
+    assert_eq!(got, want, "恢复后续写须与前段拼接一致");
+}
+
+/// 恢复位置恰在整 chunk 边界时，tail_buf 为空、位置精确。
+#[test]
+fn open_existing_at_chunk_boundary() {
+    let d = tmpdir("openex2");
+    let path = d.join("seg.partial");
+    let cs = layout().chunk_size as usize;
+
+    let n = cs * 2; // 恰好两个整 chunk
+    {
+        let mut w = LiveWalWriter::create(
+            &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, layout(), TL, 1, 3, 1, &dek(),
+        )
+        .unwrap();
+        w.write_at(0, &vec![0x5au8; n]).unwrap();
+        w.flush().unwrap();
+    }
+
+    let mut w = LiveWalWriter::open_existing(
+        &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, &dek(),
+    )
+    .unwrap();
+    assert_eq!(w.durable_len(), n as u64);
+    w.write_at(n as u64, &vec![0xa5u8; 10]).unwrap();
+    w.flush().unwrap();
+
+    let got = read_live_plain_at(&path, &Sm4Gcm, &Sm3Digest, &dek(), n as u64, 10).unwrap();
+    assert_eq!(got, vec![0xa5u8; 10]);
+}
+
+/// reset_to 回退到 chunk 边界：旧 tag 被清除，重写后读回是新内容。
+#[test]
+fn reset_to_chunk_boundary_discards_and_rewrites() {
+    let d = tmpdir("reset");
+    let path = d.join("seg.partial");
+    let cs = layout().chunk_size as usize;
+
+    let old: Vec<u8> = vec![0x11; cs + 50];
+    let new: Vec<u8> = vec![0x22; cs + 30];
+    {
+        let mut w = LiveWalWriter::create(
+            &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, layout(), TL, 1, 3, 1, &dek(),
+        )
+        .unwrap();
+        w.write_at(0, &old).unwrap();
+        w.flush().unwrap();
+
+        // 回退到 chunk 1 起点（丢弃尾块）
+        w.reset_to(cs as u64).unwrap();
+        assert_eq!(w.durable_len(), cs as u64);
+        // 从回退点重写（chunk 1 用新 nonce 重新封装）
+        w.write_at(cs as u64, &new[cs..]).unwrap();
+        w.flush().unwrap();
+    }
+
+    // chunk 0 保持原样，chunk 1 是新内容
+    let got = read_live_plain_at(&path, &Sm4Gcm, &Sm3Digest, &dek(), 0, cs + 30).unwrap();
+    let mut want = old[..cs].to_vec();
+    want.extend_from_slice(&new[cs..]);
+    assert_eq!(got, want, "回退点前的 chunk 不变、之后为新内容");
+}
+
+/// reset_to 支持**任意偏移**（WAL 截断点不保证页对齐）。
+#[test]
+fn reset_to_accepts_arbitrary_offset() {
+    let d = tmpdir("resetalign");
+    let path = d.join("seg.partial");
+    let mut w = LiveWalWriter::create(
+        &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, layout(), TL, 1, 3, 1, &dek(),
+    )
+    .unwrap();
+    w.write_at(0, &vec![0x33u8; 300]).unwrap();
+    w.flush().unwrap();
+
+    assert!(w.reset_to(10_000).is_err(), "越过段长须拒绝");
+    // 非对齐偏移必须可用：WAL 截断点是记录对齐而非页对齐
+    w.reset_to(100).unwrap();
+    assert_eq!(w.durable_len(), 100);
+    w.write_at(100, &vec![0x44u8; 20]).unwrap();
+    w.flush().unwrap();
+
+    let got = read_live_plain_at(&path, &Sm4Gcm, &Sm3Digest, &dek(), 0, 120).unwrap();
+    let mut want = vec![0x33u8; 100];
+    want.extend_from_slice(&vec![0x44u8; 20]);
+    assert_eq!(got, want, "非对齐截断后内容须为「保留前缀 + 新写入」");
+}
+
+/// 非对齐截断后，被截断的旧数据**不可读**（否则截断无意义）。
+#[test]
+fn reset_to_unaligned_hides_truncated_data() {
+    let d = tmpdir("resetcut");
+    let path = d.join("seg.partial");
+    {
+        let mut w = LiveWalWriter::create(
+            &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, layout(), TL, 1, 3, 1, &dek(),
+        )
+        .unwrap();
+        w.write_at(0, &vec![0x11u8; 200]).unwrap();
+        w.flush().unwrap();
+        // 截到 100：chunk 0 被重封为 plain_len=100
+        w.reset_to(100).unwrap();
+        w.flush().unwrap();
+    }
+    // 读到 200 须失败（旧尾部已被逻辑丢弃）
+    assert!(
+        read_live_plain_at(&path, &Sm4Gcm, &Sm3Digest, &dek(), 0, 200).is_err(),
+        "截断区间须不可读"
+    );
+    // 读到 100 须成功且内容为原前缀
+    let got = read_live_plain_at(&path, &Sm4Gcm, &Sm3Digest, &dek(), 0, 100).unwrap();
+    assert_eq!(got, vec![0x11u8; 100]);
+}
+
+/// 回退后旧密文残留不可读：读超出 durable 长度的区间须报错而非解出旧数据。
+#[test]
+fn read_beyond_durable_after_reset_fails_closed() {
+    let d = tmpdir("resetread");
+    let path = d.join("seg.partial");
+    let cs = layout().chunk_size as usize;
+    {
+        let mut w = LiveWalWriter::create(
+            &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, layout(), TL, 1, 3, 1, &dek(),
+        )
+        .unwrap();
+        w.write_at(0, &vec![0x44u8; cs + 50]).unwrap();
+        w.flush().unwrap();
+        w.reset_to(cs as u64).unwrap();
+        w.flush().unwrap();
+    }
+    // chunk 1 的 tag 已置零 ⇒ 读到那里须 fail-closed（不得解出旧密文）
+    let r = read_live_plain_at(&path, &Sm4Gcm, &Sm3Digest, &dek(), 0, cs + 10);
+    assert!(r.is_err(), "回退区间须不可读（tag 已清除）");
+}
+
+/// 满段（全部 chunk 已写）恢复：位置 = seg_size，无尾块。
+#[test]
+fn open_existing_full_segment() {
+    let d = tmpdir("openfull");
+    let path = d.join("seg.partial");
+    let seg = layout().seg_size as usize;
+    {
+        let mut w = LiveWalWriter::create(
+            &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, layout(), TL, 1, 3, 1, &dek(),
+        )
+        .unwrap();
+        w.write_at(0, &vec![0x9au8; seg]).unwrap();
+        w.flush().unwrap();
+    }
+    let w = LiveWalWriter::open_existing(
+        &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, &dek(),
+    )
+    .unwrap();
+    assert_eq!(w.durable_len(), seg as u64, "满段恢复位置须为 seg_size");
+}
+
+/// reset_to 到**未来位置**（超过已写长度）：按上游 `set_len` 语义补零。
+#[test]
+fn reset_to_beyond_written_fills_zeroes() {
+    let d = tmpdir("resetfwd");
+    let path = d.join("seg.partial");
+    {
+        let mut w = LiveWalWriter::create(
+            &Sm4Gcm, &Sm3Digest, Box::new(drbg()), &path, layout(), TL, 1, 3, 1, &dek(),
+        )
+        .unwrap();
+        w.write_at(0, &vec![0x55u8; 100]).unwrap();
+        w.flush().unwrap();
+        // 截断到 300（> 已写 100）：上游 set_len 会把 100..300 表现为零
+        w.reset_to(300).unwrap();
+        w.flush().unwrap();
+    }
+    let got = read_live_plain_at(&path, &Sm4Gcm, &Sm3Digest, &dek(), 0, 300).unwrap();
+    let mut want = vec![0x55u8; 100];
+    want.extend_from_slice(&vec![0u8; 200]);
+    assert_eq!(got, want, "前向截断须补零（与上游 set_len 一致）");
+}

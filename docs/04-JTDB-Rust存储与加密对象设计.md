@@ -198,6 +198,33 @@ Pageserver 页缓存命中时无解密；未命中时代价 = 1 chunk 解密（6
 
 **阻塞项状态**：nonce 方案**已闭环**（S2：每 chunk 独立随机 nonce 取自 DRBG；`Sm4CtrDrbg` + `RandomSource` 已实现）。剩余为 §9.4 的**密码专项评审**（流程项，需人工评审签字）。**尚未接线**：Safekeeper 的 `wal_storage.rs` 仍写明文——格式原语已就位，接线点见 docs/16 §5.2.2。
 
+### 5.2.1 布局定案与集成面（ADR-016，2026-09-21）
+
+**本节上述布局经工业实践与国密合规双向核实后定案，格式零改动**。核实要点：
+
+- **工业界一致做法**：SQL Server TDE（8 KiB 页保留 96 B 页头明文）、MySQL 8.0
+  `innodb_redo_log_encrypt`（保留 12 B log block header 明文，`os0enc.cc`
+  逐字节 `memcpy` 头部、只加密块体）、PG v3 TDE 补丁（保留 page LSN + 校验和明文，
+  使 `pg_checksums` 可离线校验）**均保留格式头明文 + 密文与明文同偏移 + 长度保持**。
+  唯一加密页头的 pg_tde 付出工具链代价：`pg_receivewal` 不可用、
+  `pg_verifybackup` 默认失败、pgBackRest 需关掉 `archive-header-check`。
+- **"偏移恒等"成立**：本布局数据区 `[0..S)` 与明文 **1:1 同偏移**（tag 区与 header
+  都在 `S` 之后），故 LSN↔偏移恒等**成立**，`WalReader` 按任意 `xlogoff` seek 读不受影响。
+- **真正被破坏的是"段文件长度 == wal_seg_size"**（认证必然扩张，见 IEEE 1619.1
+  标题 *Authenticated Encryption **with Length Expansion** for Storage Devices*；
+  NIST SP 800-38E 亦说明 XTS 之所以不认证，正是因为"认证必然扩张"）。
+- **密评要求 AEAD**：GB/T 39786-2021 要求数据存储**机密性 + 完整性**，故
+  "等长但无认证"的 XTS 路线（SQL Server / MySQL 做法）不合格；必须 AEAD
+  （本仓 SM4-GCM，规范依据 RFC 8998，**不是** GB/T 38636-2020——后者是 TLCP，
+  套件为 SM4-CBC-SM3）。tag 落在数据区之外，即本布局的独立 tag 区。
+
+**集成面 6 点**（详见 ADR-016 §4）：必修 = `find_end_of_wal` 加密感知变体、
+`open_or_create` 恢复写位置、`truncate_wal` 布局感知；守卫（fail-closed）=
+S3 上传、`copy_timeline`（否则静默产出明文副本）、`pull_timeline`。
+
+**已知代价**：Safekeeper WAL 目录内的段文件**不再能被 `pg_waldump` 直接读取**
+（页头在密文内）——与 pg_tde 同款代价，需在运维手册明示；compute 侧与 base backup 不受影响。
+
 ## 6. 密钥封装（Key Envelope）
 
 ```text
