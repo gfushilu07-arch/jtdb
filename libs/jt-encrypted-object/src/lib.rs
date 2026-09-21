@@ -6,6 +6,7 @@
 
 pub mod error;
 pub mod header;
+pub mod live_wal;
 pub mod object;
 pub mod stream;
 pub mod tlv;
@@ -14,6 +15,10 @@ pub mod wal;
 pub use error::ObjectError;
 pub use header::{Header, ObjectType, HEADER_SIZE};
 pub use object::{chunk_aad, chunk_nonce, ObjectReader, Writer, DEFAULT_CHUNK_SIZE, TAG_LEN};
+pub use live_wal::{
+    live_chunk_aad, read_live_header, read_live_plain_at, LiveWalLayout, LiveWalMeta,
+    LiveWalWriter, TagEntry, FLAG_LIVE_WAL, LIVE_CHUNK_SIZE, TAG_ENTRY_SIZE,
+};
 pub use stream::{decrypt_range, encrypt_stream, StreamMeta};
 pub use wal::{
     seal_wal_segment, unseal_wal_segment, WalSegStats, WalSegWriter, TLV_REAL_CHUNK_COUNT,
