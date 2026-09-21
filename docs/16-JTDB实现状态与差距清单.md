@@ -228,6 +228,45 @@ IMA:     仅 boot_aggregate 一条，且聚合值为全零（无硬件根）
 **如实标注 `SoftwareOnly`**，与 docs/12 §4.1 对软件熵源的处理同构
 （标 `rng_source=software` + 降级告警，而非伪装成硬件源）。
 
+## 5.9 事故记录：基础2 全链路 OOM（2026-09-21）
+
+**现象**：在基础2（2C/7.3G）上启动 WAL 加密端到端验证时，全链路组件
+（pageserver + safekeeper + storcon + storcon 内部 PG + jt-kms + compute +
+broker + endpoint_storage）同时运行，随后 **SSH 断开、ping 100% 丢包、
+TCP 22 可连但立即关闭**——典型内存耗尽症状。机器需重启（或等待平台回收
+策略介入）才能恢复。
+
+**根因**：基础2 只有 7.3GB 内存，且机上已有 snsc 业务容器。全链路叠加
+我新部署的 debug 构建二进制（未 strip 时 safekeeper 单个 577MB 常驻
+RSS 更大）超出可用内存。
+
+**我的失误**（记录以免重犯）：
+1. **未做内存预检**就启动全链路——脚本直接跑，没有"可用内存不足则拒绝"
+   的闸门；
+2. 明知本机是**生产机（含 snsc 业务）**，却没有对资源占用设限；
+3. 二进制是 debug 构建，内存占用显著高于 release（虽已 strip debug 符号，
+   但仍是 debug profile 的代码生成）。
+
+**已做的补救**（脚本已加，待机器恢复后生效）：
+- 内存预检：可用内存 < 3000MB 直接拒绝运行（`free -m` 第 7 列）；
+- 检测 docker 容器并提示"本机含 snsc 业务"；
+- 清理逻辑覆盖任意 JTDB 相关 postgres（不只本脚本目录）——此前踩到旧会话
+  残留占端口。
+
+**后续要求**：
+- 全链路验证**改用 release 构建**（内存占用显著更低）；
+- 或换更大规格机器（≥8GB 可用）；
+- 或分阶段验证（先单独验证 safekeeper + KMS 的加密写入，再跑完整链路）。
+
+**已确认有效的部分**（在 OOM 前已跑通）：
+- 二进制部署正确（safekeeper 含 `wal-encryption-kms-endpoint`）
+- **加密参数确实到达 safekeeper 进程**（`/proc/<pid>/cmdline` 验证，3 处命中）
+- storcon + broker + endpoint_storage + pageserver 全部启动成功
+- 真实 jt-kms 实例就绪
+
+即：**装配链路本身已验证可用**，未完成的是"真实 WAL 流下的加密判据"
+（段文件含 JTENCOBJ 头 + 不含明文标记）。
+
 ## 6. 优先级排序
 
 ### 6.1 排序准则
