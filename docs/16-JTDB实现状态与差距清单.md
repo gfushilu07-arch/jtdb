@@ -96,7 +96,7 @@
 
 | # | 缺口 | 作用 | 证据 |
 |---|---|---|---|
-| S1 | **WAL 加密**（进行中） | 只加密 Layer 而 WAL 明文 = 加密承诺残缺：写前日志含全部数据变更 | **libs 层已实现**：`libs/jt-encrypted-object/src/wal.rs`（追加式 `WalSegWriter` + `seal_wal_segment`/`unseal_wal_segment`，16/16 绿）。**活段文件仍未加密**——见下方 §5.2.1 的架构裁决 |
+| S1 | **WAL 加密**（格式已就绪，待接线） | 只加密 Layer 而 WAL 明文 = 加密承诺残缺：写前日志含全部数据变更 | **libs 层已完成**：`wal.rs`（追加式对象 + 段↔对象转换，16/16）+ `live_wal.rs`（**活段布局**，15/15，含同偏移/flush 边界认证/流式解密三项约束）。**缺**：Safekeeper `wal_storage.rs` 仍写明文——接线未做（见 §5.2.2） |
 | S2 | ~~nonce 方案~~ **已闭环** | `base_nonce` 改为**每对象随机取自 DRBG**（符合 docs/04 §3.1 / docs/12 §4.4）；`Sm4CtrDrbg` 已实现（`libs/jt-crypto-sm/src/drbg.rs`，10/10）+ `RandomSource` trait（`jt-crypto-api`）。**格式向后兼容**（nonce 本就在 header offset 86..98，读取端从 header 取值），已落盘对象无需重加密。**剩余**：docs/04 §9.4 的"密码专项评审"仍属流程项（需人工评审签字），非代码项 | 见 ADR-015（四十六） |
 | S4 | DRBG 与随机数治理 | TCM DRBG > 密码卡/HSM > OS CSPRNG 分级 + `rng_source` 标记 + 软件回退时 KMS 拒发新 DEK | **部分实现**：`Sm4CtrDrbg`（CTR_DRBG + KAT + 连续性 + 重播种周期，10/10）+ `RngSource` 三级枚举 + `is_degraded()`。**缺**：TCM/HSM 硬件源接入、KMS 侧"降级拒发新 DEK"联动 |
 | S3 | **BranchKeyGrant** | ADR-014 分支授权：分支只能解密到分支点、epoch ≤ max_epoch | `services/jt-kms` grep 零命中（协议层 `libs/jt-storage-protocol` 已实现 `authorizes()`） |
@@ -114,6 +114,18 @@ docs/04 §5 把 WAL 段对象描述为"追加式、64 KiB chunk 攒满即加密�
 **结论**：docs/04 §5 的对象模型对应**已完成、不可变的段**（docs/04 §2 原则"对象不可变"）——即**归档/卸载路径**（S3 上传、base backup、归档恢复），与 docs/02 §4.4 把"归档恢复、base backup"列入覆盖一致。本仓已实现该路径原语（`seal_wal_segment`/`unseal_wal_segment`）。
 
 **活段文件加密是另一条路径**，需单独设计：要求页级/记录级加密（或对 WAL 页做独立 AEAD），且必须满足 (a) 密文与明文同偏移（保持 LSN↔偏移恒等）、(b) 每个 flush 边界可独立认证、(c) 对端能流式解密未写完的段。**docs/04 §5 未描述此形态，属规格缺口**（见 §5.7），需补设计后实施。
+
+#### 5.2.2 活段 WAL 加密的接线（未做）
+
+格式原语已就位（`libs/jt-encrypted-object/src/live_wal.rs`，15/15 绿），但 **Safekeeper 的 `wal_storage.rs` 仍写明文**。接线需要改动三处：
+
+1. **写路径**（`write_in_segment` / `write_exact`）：改为经 `LiveWalWriter::write_at` 顺序写入；`open_or_create` 的预分配逻辑改为按 `LiveWalLayout::file_len()`（含 tag 区 + header）。
+2. **flush 边界**（`fdatasync_file` 前后）：通告 `flush_lsn` **之前**必须调用 `LiveWalWriter::flush()`——否则通告位置可能尚未封装，对端读到的 tag 与密文不一致（这是本设计的硬约束）。
+3. **读路径**（`WalReader::open_segment` / `read_wal`）：改为 `read_live_plain_at_with_meta`（按明文偏移读，逐 chunk 解密）。
+
+**风险点**：写路径现为"按任意 xlogoff seek 写"，而 `LiveWalWriter` 是顺序追加语义（`write_at` 拒绝非连续偏移）。上游 `wal_storage.rs` 自身有 TODO 承认"应当 append-only"，但现状允许重写既有偏移（如 `xlog switch` 场景）。接线前需确认该路径是否真的只顺序推进；若存在重写，需要为"重写已封装 chunk"设计（那属于 §5 的"新对象"语义，不是活段能表达的）。
+
+**密钥来源**：`LiveWalWriter::create` 需要 `dek`（来自 KMS 租约）与 `rng`（进程级 DRBG）。Safekeeper 当前无 KMS 客户端——需接入租约获取与轮换失效传播（与 Pageserver 侧 `KeyProvider` 同构）。
 
 ### 5.3 身份引导（完全缺失，阶段 2/3）
 
