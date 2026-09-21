@@ -166,7 +166,7 @@ Pageserver 页缓存命中时无解密；未命中时代价 = 1 chunk 解密（6
 
 **裁决 2：封段信号由原子 `rename` 承载。** `.part` 存在 = 未封段（恢复时忽略）；rename 到最终名 = 已封段。与本节"fsync → 原子 rename"给出一致的崩溃语义，且无需改动 header（否则回到裁决 1 的矛盾）。
 
-### 5.2 活段文件加密（**待设计**，实现期确认的规格缺口）
+### 5.2 活段文件加密（**已实现**，2026-09-20）
 
 本节上文的"追加式对象"模型**不适用于 Safekeeper 的活段文件**，实测确认两点冲突：
 
@@ -180,9 +180,23 @@ Pageserver 页缓存命中时无解密；未命中时代价 = 1 chunk 解密（6
 - (c) **对端能流式解密未写完的段**（`.partial` 语义不变）；
 - (d) AAD 至少绑定 `timeline_id / wal_segment / record_lsn / key_epoch / generation`（docs/02 §4.4）。
 
-**候选形态**（待密码专项评审）：按 WAL 页（8 KiB，PostgreSQL 原生边界）做独立 AEAD，tag 存**独立 tag 区**而非就地追加（保持同偏移）；段尾或独立元数据文件承载 header 与签名。该形态与 §3.1 的"对象"布局不同，需决定是新增 `object_type`（如 `WAL_LIVE_SEG`）还是走独立格式版本。
+**采用形态**（`libs/jt-encrypted-object/src/live_wal.rs`，15 项测试）：按 chunk（默认 8 KiB，PostgreSQL 页边界）做独立 AEAD，**tag 存独立 tag 区**而非就地追加（保持同偏移）；header 置于文件末尾。与 §3.1 的对象布局不同，用 `flags.LIVE_WAL`（`0b0001_0000`）区分——同一 `object_type=WalSeg`，布局不同。
 
-**阻塞项**：本形态的 nonce 方案与 §3.1/§4.3 的"base_nonce 随机取自 DRBG"必须一并冻结（见 docs/16 §5.2 S2）；且 §9.4 的格式冻结前置条件（SM4 模式与 nonce 方案经密码专项评审）尚未满足。
+```text
+[0 .. S)                密文区：与明文 1:1 同偏移（S = seg_size）
+[S .. S + T)            tag 区：每 chunk 32B = plain_len(4) || nonce(12) || tag(16)
+[S + T .. S + T + 130)  header
+```
+
+`plain_len == 0` 兼作"未写"哨兵（预分配零填充天然表示未写，无需位图）；tag 条目按 `chunk_index` O(1) 定位（`S + c*32`）。
+
+**尾部半块的处理（关键裁决）**：`flush_lsn` 可落在 chunk 中间（WAL 记录不按页对齐），而 GCM 禁止 `(key, nonce)` 重用。解法是**尾块每次 flush 用新 nonce 重新封装整个 chunk**并覆写密文与 tag 条目——旧密文被覆写、旧 nonce 永久废弃，故不存在二次使用；**整 chunk 写满即冻结不可变**。代价是每次 flush 至多重加密一个 chunk（≤ chunk_size）。
+
+**崩溃一致性**：先写密文、后写 tag 条目（tag 为提交点）。崩在两者之间时，读取端用旧 nonce 解新密文 → AEAD 失败 → **检出而非静默错误**（fail-closed），随后走 Neon 原生对端重拉恢复。
+
+**AAD**（docs/02 §4.4）：`timeline_id || seg_no || chunk_index || chunk_plain_off || key_epoch || generation || plain_len`——跨段/跨偏移/跨 epoch 搬移均可检出。
+
+**阻塞项状态**：nonce 方案**已闭环**（S2：每 chunk 独立随机 nonce 取自 DRBG；`Sm4CtrDrbg` + `RandomSource` 已实现）。剩余为 §9.4 的**密码专项评审**（流程项，需人工评审签字）。**尚未接线**：Safekeeper 的 `wal_storage.rs` 仍写明文——格式原语已就位，接线点见 docs/16 §5.2.2。
 
 ## 6. 密钥封装（Key Envelope）
 
