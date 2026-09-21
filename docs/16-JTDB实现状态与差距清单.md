@@ -286,21 +286,57 @@ as they need continuous stream of data"（`walproposer.c:1392-1394`）。故"段
 - 全部 2048 个 chunk 的 tag 条目 `plain_len=8192`（已封装）✓
 - 若 `open_existing` 正确恢复位置，应得 `written=16 MiB`，则回退到 8 KiB 合法 ✓
 
-**剩余待做（一处，明确）**：让"续写既有段"真正恢复位置。要点：
+### 又一层发现：WAL 页头必须是**明文**（2026-09-21 续查）
 
-1. `open_existing` **不能先 `create`** —— `create` 会 `File::create` 截断文件并
-   重写 header，把既有 tag 区清零（实测：本应扫出 16 MiB，因 create 先执行而得 0）。
-   须**先扫 tag 区取位置**，再以 `OpenOptions::read(true).write(true)` 打开既有文件；
-2. 续写时 AAD 依赖的 `header_digest` 必须取自**既有 header**（`create` 时算的
-   是同一值，但重建 writer 需重新读取），否则 AEAD 校验失败；
-3. `LiveWalWriter` 需暴露一个"从既有段构造"的入口（字段初始化顺序需调整：
-   当前 `header_digest` 由 `create` 内部计算并存入局部变量，未作为字段持久化）。
+按上述单点修复（`open_existing` 恢复位置 + 截断改为"位置重置"）后，实测错误
+从"位置脱节"变为：
 
-**教训**：这轮我在同一处反复试错（删段重建 → 重写段头 → `reset_to` →
-`enc_start` 明文透传 → `open_existing`），根因是**未先读上游调用序列**就动手。
-若一开始就读 `HandleElected`（`safekeeper.rs:1185-1200`）与 `walproposer.c` 的
-`startStreamingAt` 计算，可省去前四种方案。**后续遇到集成类冲突，先读调用链
-再设计。**
+```text
+write_wal: invalid xlog page header: xlp_magic=17747, expected 53528 at 0/2000
+```
+
+`at 0/2000` 说明**位置已正确**（8 KiB = 0x2000），`write_wal` 已进入正常流程；
+失败在**页头校验**：`WalStreamDecoder::validate_page_header`
+（`libs/postgres_ffi/src/waldecoder_handler.rs:40-70`）要求
+
+- 段首（`lsn.block_offset() == 0` 且 segment 起点）：**长页头**（`XLogLongPageHeaderData`），
+- 其后每个页边界（`lsn.block_offset() == 0`）：**短页头**（`XLogPageHeaderData`），
+
+并校验 `xlp_magic == XLOG_PAGE_MAGIC`（0xD118）与 `xlp_pageaddr == lsn`。
+而"位置重置"把截断点处的密文留在了页边界上 → 校验失败。
+
+**结论：WAL 页头（段首长头 + 每页短头）必须是明文**，不能纳入加密 chunk。
+这不是可绕过的实现细节——`write_wal` 的输入要过 `WalStreamDecoder`，解码器在
+每个页边界都要求合法明文页头。
+
+**这与 Layer 的处理同构**：Layer 格式已有 `ENC_START = 8192`（blk0 summary 明文
+透传），WAL 需要类似的"页头区明文"设计。差别在于 WAL 的页头**周期性出现**
+（每 8 KiB 一个短页头），而非仅段首一次。
+
+### 设计决策（需定，未实现）
+
+WAL 活段加密需在以下方案中选择（本仓已实现前两处基础，第三处待定）：
+
+| 方案 | 做法 | 代价 |
+|---|---|---|
+| A. 仅段首长头明文，其余全密文 | 段首 40B 长头明文，其后整段加密 | **不可行**：后续页边界的短页头也在密文里，解码器校验失败（本次实测） |
+| B. 页头明文 + 页体密文 | 每 8 KiB 页：前 24B（短头）明文 + 余下 8168B 加密 | 密文与明文**不同偏移**（每页错开 24B），破坏"LSN↔偏移恒等"，Safekeeper 的 seek 读与 `write_in_segment` 全需改 |
+| C. 页头区明文透传（同 Layer 的 ENC_START） | 段首 8 KiB 明文（含长头 + 首页头），其后加密 | 只解决**段首**；后续页边界短页头仍在密文里 → 仍失败 |
+| D. 按页独立加密，页头保留明文 | 每页 8 KiB = 24B 明文短头 + 8168B 密文（同 B），但**tag 另置区**且密文区按页压缩 | 同 B 的偏移问题；且 chunk 与页不再对齐 |
+
+**建议方向**：需先确认一个前提——**Safekeeper 读路径是否真的需要"LSN↔偏移恒等"**。
+若读端总是经 `WalStreamDecoder` 逐页解码（而非按任意偏移 seek 取字节），则
+方案 B/D 的"每页错开 24B"可由解码器内部消化（读端按页号算出密文偏移），
+LSN↔偏移恒等只在**解码器内部**成立而非在**文件布局**上成立。
+
+这需要读 `WalReader`/`send_wal` 的读取粒度（按页还是按任意字节）才能定——
+**故本轮在此停止，不猜设计**。
+
+### 已回退
+
+上述接线改动（`open_existing` + `reset_to` + 截断位置重置）已回退，基线干净
+（libs 15/15、safekeeper 33/33）。`libs` 侧的两处能力（`open_existing` 恢复位置、
+`reset_to` chunk 边界回退）本身是正确的、有测试价值的，可在设计定案后直接复用。
 
 ### 影响
 
