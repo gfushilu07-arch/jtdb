@@ -12,10 +12,15 @@
 //!   续租携带新鲜 attestation 摘要、过期拒绝新会话+存量转只读、时间源异常
 //!   拒绝签发、审计中断 fail-closed）。
 //!
-//! 尚未实现（需真实 KMS 网络与 attestation 硬件）：KMS 服务端协议
-//! （jt-kms 服务的 HTTP/gRPC 面）、TCM/TEE attestation 采集、
-//! 防回滚计数器的 KMS 侧持久化（本模块提供本地份与校验逻辑）。
+//! * [`kms_provider`] —— **生产 DEK 供给**：租约驱动的缓存 + 后台续租，
+//!   `get_dek` 只读缓存（同步、无网络），过期 fail-closed、Retire 转
+//!   [`KeyError::UnknownScope`]（加密擦除，ADR-013）。
+//!
+//! 尚未实现（需真实 KMS 网络与 attestation 硬件）：TCM/TEE attestation
+//! 采集（证明摘要由装配层注入 `HttpKmsClient`）、防回滚计数器的 KMS 侧
+//! 持久化（本模块提供本地份与校验逻辑）。
 
+pub mod kms_provider;
 pub mod lease;
 pub mod provider;
 pub mod rotation;

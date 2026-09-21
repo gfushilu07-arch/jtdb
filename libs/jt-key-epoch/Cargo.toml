@@ -10,3 +10,7 @@ jt-crypto-sm = { workspace = true }
 thiserror = "1"
 parking_lot = "0.12"
 hex = "0.4"
+serde_json = "1"
+# 阻塞 HTTP 客户端：KmsClient::fetch_dek 是同步接口（后台续租任务调用），
+# 故用 ureq 而非 reqwest（后者需要 async 运行时）。
+ureq = { version = "2", features = ["json"] }

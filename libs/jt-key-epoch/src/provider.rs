@@ -14,7 +14,7 @@ pub struct DekScope {
 }
 
 /// DEK 供给错误。
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum KeyError {
     #[error("no DEK for scope (timeline/epoch): epoch retired or unknown")]
     UnknownScope,
