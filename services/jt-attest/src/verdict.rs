@@ -328,6 +328,7 @@ mod tests {
             build_identity: None,
             rollback_counter: 5,
             node_pk: "cc".repeat(32),
+            nonce: "dd".repeat(16),
             collected_at: 1000,
         }
     }

@@ -123,6 +123,17 @@ pub struct AttestationEvidence {
     pub node_pk: String,
     /// 证据采集时刻（Unix 秒）。
     pub collected_at: u64,
+    /// 采集随机数（SM3 十六进制）。
+    ///
+    /// **用途**：使每次采集的证据摘要唯一。KMS 侧有防重放（同一摘要只接受
+    /// 一次，见 `services/jt-kms/src/state.rs::check_attestation_fresh`），
+    /// 故**静态摘要只能用一次**——实测：第二次请求同一摘要返回 409
+    /// "stale attestation (replay rejected)"。
+    ///
+    /// 仅靠 `collected_at`（秒级）不够：同一秒内两次采集会得到相同摘要。
+    /// 故用 DRBG 随机数（docs/12 §4.3）。
+    #[serde(default)]
+    pub nonce: String,
 }
 
 impl AttestationEvidence {

@@ -12,9 +12,11 @@
 //! 本模块为纯逻辑层（证据模型 + 校验 + 结论 + 密钥释放门槛）；真实
 //! TCM/TEE 设备交互（ioctl / secGear）为后续。
 
+pub mod collector;
 pub mod evidence;
 pub mod verdict;
 
+pub use collector::{CollectError, CollectorConfig, EvidenceCollector};
 pub use evidence::{
     AttestationEvidence, AttestationTier, BuildIdentity, Capabilities, PcrValue, SoftwareMeasurement,
 };
