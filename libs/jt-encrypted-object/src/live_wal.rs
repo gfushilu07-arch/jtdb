@@ -387,14 +387,29 @@ impl<'a> LiveWalWriter<'a> {
     /// 部分）：旧密文被覆写、旧 nonce 永久废弃，故不存在 (key, nonce) 二次
     /// 使用。代价是每次 flush 至多重加密一个 chunk（≤ chunk_size）。
     pub fn flush(&mut self) -> Result<u64, ObjectError> {
+        self.seal_tail()?;
+        self.part.sync_all()?;
+        Ok(self.sealed_upto)
+    }
+
+    /// 只封装尾块（写密文与 tag 到 OS），**不 fsync**。
+    ///
+    /// 与 [`Self::flush`] 的区别对性能至关重要：Safekeeper 的
+    /// `write_in_segment` 每次批量写入后只做 userspace flush，fsync 延迟到
+    /// `flush_wal`（由 walproposer 的 flush 请求驱动）。若每次写入都 fsync，
+    /// 写吞吐会被磁盘同步拖垮（这是上游刻意分开两步的原因）。
+    ///
+    /// **正确性前提**：调用方在**通告 flush_lsn 之前**必须调用本方法（或
+    /// [`Self::flush`]），否则对端读到的 tag 与密文不一致。`flush_wal` 走
+    /// [`WalFile::sync_all`] 前会先经本方法封装。
+    pub fn seal_tail(&mut self) -> Result<u64, ObjectError> {
         if !self.tail_buf.is_empty() {
             let c = self.layout.chunk_of(self.chunk_base);
             let chunk: Vec<u8> = self.tail_buf.clone();
             self.seal_chunk_bytes(c, &chunk)?;
-            // 不变量：flush 后 sealed_upto == written（尾块全量已封装）
+            // 不变量：封装后 sealed_upto == written（尾块全量已封装）
             self.sealed_upto = self.written;
         }
-        self.part.sync_all()?;
         Ok(self.sealed_upto)
     }
 
