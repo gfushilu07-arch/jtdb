@@ -44,7 +44,7 @@ fn write_then_read_roundtrip() {
     let plain: Vec<u8> = (0..1000).map(|i| (i % 251) as u8).collect();
 
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     w.write_at(0, &plain).unwrap();
@@ -66,7 +66,7 @@ fn ciphertext_is_same_offset_as_plaintext() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     // 写满恰好两个整 chunk
@@ -99,7 +99,7 @@ fn tail_reseal_uses_fresh_nonce_and_no_reuse() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
 
@@ -141,7 +141,7 @@ fn full_chunks_are_immutable_after_seal() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     let cs = layout().chunk_size as usize;
@@ -172,7 +172,7 @@ fn reading_beyond_durable_length_fails_closed() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     w.write_at(0, &vec![0x11u8; 100]).unwrap();
@@ -195,7 +195,7 @@ fn aad_binds_segment_identity() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     w.write_at(0, &vec![0x22u8; 200]).unwrap();
@@ -226,7 +226,7 @@ fn tampered_ciphertext_or_tag_fails_authentication() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     w.write_at(0, &vec![0x33u8; 300]).unwrap();
@@ -260,7 +260,7 @@ fn wrong_key_fails() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     w.write_at(0, &vec![0x44u8; 128]).unwrap();
@@ -278,7 +278,7 @@ fn seal_renames_partial_and_preserves_data() {
     let path = d.join("000000010000000000000001");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     let plain: Vec<u8> = (0..500).map(|i| (i % 97) as u8).collect();
@@ -300,7 +300,7 @@ fn non_sequential_write_is_rejected() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     w.write_at(0, &vec![1u8; 10]).unwrap();
@@ -315,7 +315,7 @@ fn file_length_is_fixed_at_creation() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     let len0 = std::fs::metadata(&path).unwrap().len();
@@ -341,7 +341,7 @@ fn crash_between_ciphertext_and_tag_is_detected() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     w.write_at(0, &vec![0xAAu8; 200]).unwrap();
@@ -380,7 +380,7 @@ fn injected_rng_makes_nonces_reproducible_for_debugging() {
     let path = d.join("seg.partial");
     let mut rng = CountingRng(0);
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     w.write_at(0, &vec![0x66u8; 300]).unwrap();
@@ -396,7 +396,7 @@ fn empty_flush_is_noop() {
     let path = d.join("seg.partial");
     let mut rng = drbg();
     let mut w = LiveWalWriter::create(
-        &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+        &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
     )
     .unwrap();
     assert_eq!(w.flush().unwrap(), 0, "空 flush 不推进 durable 长度");
@@ -412,7 +412,7 @@ fn not_a_live_segment_is_rejected() {
     // 用活段布局写，但把 LIVE_WAL 位清掉，模拟对象布局文件
     {
         let mut w = LiveWalWriter::create(
-            &Sm4Gcm, &Sm3Digest, &mut rng, &path, layout(), TL, 1, 3, 1, &dek(),
+            &Sm4Gcm, &Sm3Digest, Box::new(rng), &path, layout(), TL, 1, 3, 1, &dek(),
         )
         .unwrap();
         w.write_at(0, &vec![0x77u8; 100]).unwrap();

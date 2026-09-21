@@ -96,7 +96,7 @@
 
 | # | 缺口 | 作用 | 证据 |
 |---|---|---|---|
-| S1 | **WAL 加密**（格式已就绪，待接线） | 只加密 Layer 而 WAL 明文 = 加密承诺残缺：写前日志含全部数据变更 | **libs 层已完成**：`wal.rs`（追加式对象 + 段↔对象转换，16/16）+ `live_wal.rs`（**活段布局**，15/15，含同偏移/flush 边界认证/流式解密三项约束）。**缺**：Safekeeper `wal_storage.rs` 仍写明文——接线未做（见 §5.2.2） |
+| S1 | **WAL 加密**（写路径已接线） | 只加密 Layer 而 WAL 明文 = 加密承诺残缺：写前日志含全部数据变更 | **libs**：`wal.rs`（追加式对象 + 段↔对象转换，16/16）+ `live_wal.rs`（活段布局，15/15）。**Safekeeper 写路径已接线**：`wal_encryption.rs`（WalFile 形态分派 + WalEncCtx + 自动识别）+ `PhysicalStorage` 改造（33/33 绿，含「落盘不含明文」判据）。**剩余三项**见 §5.2.2 |
 | S2 | ~~nonce 方案~~ **已闭环** | `base_nonce` 改为**每对象随机取自 DRBG**（符合 docs/04 §3.1 / docs/12 §4.4）；`Sm4CtrDrbg` 已实现（`libs/jt-crypto-sm/src/drbg.rs`，10/10）+ `RandomSource` trait（`jt-crypto-api`）。**格式向后兼容**（nonce 本就在 header offset 86..98，读取端从 header 取值），已落盘对象无需重加密。**剩余**：docs/04 §9.4 的"密码专项评审"仍属流程项（需人工评审签字），非代码项 | 见 ADR-015（四十六） |
 | S4 | DRBG 与随机数治理 | TCM DRBG > 密码卡/HSM > OS CSPRNG 分级 + `rng_source` 标记 + 软件回退时 KMS 拒发新 DEK | **部分实现**：`Sm4CtrDrbg`（CTR_DRBG + KAT + 连续性 + 重播种周期，10/10）+ `RngSource` 三级枚举 + `is_degraded()`。**缺**：TCM/HSM 硬件源接入、KMS 侧"降级拒发新 DEK"联动 |
 | S3 | **BranchKeyGrant** | ADR-014 分支授权：分支只能解密到分支点、epoch ≤ max_epoch | `services/jt-kms` grep 零命中（协议层 `libs/jt-storage-protocol` 已实现 `authorizes()`） |
@@ -115,17 +115,22 @@ docs/04 §5 把 WAL 段对象描述为"追加式、64 KiB chunk 攒满即加密�
 
 **活段文件加密是另一条路径**，需单独设计：要求页级/记录级加密（或对 WAL 页做独立 AEAD），且必须满足 (a) 密文与明文同偏移（保持 LSN↔偏移恒等）、(b) 每个 flush 边界可独立认证、(c) 对端能流式解密未写完的段。**docs/04 §5 未描述此形态，属规格缺口**（见 §5.7），需补设计后实施。
 
-#### 5.2.2 活段 WAL 加密的接线（未做）
+#### 5.2.2 活段 WAL 加密：接线状态
 
-格式原语已就位（`libs/jt-encrypted-object/src/live_wal.rs`，15/15 绿），但 **Safekeeper 的 `wal_storage.rs` 仍写明文**。接线需要改动三处：
+**已完成（写路径）**（子模块提交 `556e54c`，33/33 绿）：
 
-1. **写路径**（`write_in_segment` / `write_exact`）：改为经 `LiveWalWriter::write_at` 顺序写入；`open_or_create` 的预分配逻辑改为按 `LiveWalLayout::file_len()`（含 tag 区 + header）。
-2. **flush 边界**（`fdatasync_file` 前后）：通告 `flush_lsn` **之前**必须调用 `LiveWalWriter::flush()`——否则通告位置可能尚未封装，对端读到的 tag 与密文不一致（这是本设计的硬约束）。
-3. **读路径**（`WalReader::open_segment` / `read_wal`）：改为 `read_live_plain_at_with_meta`（按明文偏移读，逐 chunk 解密）。
+- `safekeeper/src/wal_encryption.rs`：`WalEncCtx`（DEK 来源 + 布局 + 绑定字段）、`WalFile` 枚举（`Plain(File)` / `Enc(LiveWalWriter)`，让 `PhysicalStorage` 无需感知形态差异）、读取入口（`read_encrypted_at` / `read_segment_meta` / `is_encrypted_segment` 按文件头自动识别，支持迁移期混存）、进程级 DRBG 启动健康检测（fail-closed）。
+- `PhysicalStorage`：`file` 字段 `File` → `WalFile`；`new()` 保留为包装（传 `None`），**既有调用方零改动**；新增 `new_with_encryption()`；`open_or_create` 分派（加密形态预分配完整布局；既有**明文段在加密启用时拒绝续写**，避免格式混用）；`write_in_segment` 经 `WalFile` 分派，加密形态 `flush()` 会封装尾块使对端可读；加密段 `set_len` 拒绝（布局长度固定）。
+- **关键判据已测**：`encrypted_wal_file_does_not_contain_plaintext` —— 同一内容明文模式可直接看到、加密模式落盘字节不含明文且能解回。
+- **顺序性前提已核实**：`LiveWalWriter` 要求严格顺序追加，而 `safekeeper.rs` 的 append 处理与 `wal_storage.rs::write_wal` 都显式 `bail!` 拒绝重写与 gap，故无需为「重写既有偏移」设计。
 
-**风险点**：写路径现为"按任意 xlogoff seek 写"，而 `LiveWalWriter` 是顺序追加语义（`write_at` 拒绝非连续偏移）。上游 `wal_storage.rs` 自身有 TODO 承认"应当 append-only"，但现状允许重写既有偏移（如 `xlog switch` 场景）。接线前需确认该路径是否真的只顺序推进；若存在重写，需要为"重写已封装 chunk"设计（那属于 §5 的"新对象"语义，不是活段能表达的）。
+**剩余（三项）**：
 
-**密钥来源**：`LiveWalWriter::create` 需要 `dek`（来自 KMS 租约）与 `rng`（进程级 DRBG）。Safekeeper 当前无 KMS 客户端——需接入租约获取与轮换失效传播（与 Pageserver 侧 `KeyProvider` 同构）。
+1. **装配层未注入 `WalEncCtx`** —— 生产仍走明文路径。阻塞点是 **Safekeeper 没有 KMS 客户端**（`grep jt_kms` / `KeyProvider` 于 safekeeper 零命中），需先接入租约获取与轮换失效传播（与 Pageserver 侧 `KeyProvider` 同构）。
+2. **读路径 `WalReader` 未切换** —— `WalReader::open_segment` 仍按明文 seek 读。需改为先 `is_encrypted_segment` 判定，加密段走 `read_encrypted_at`（并缓存 `LiveWalMeta` 与 DEK，避免每页重复读 header / 取密钥）。
+3. **`flush_lsn` 通告时序** —— `flush_wal()` 之后、向 walproposer 回报 `flush_lsn` 之前，必须确保尾块已封装（加密形态的 `WalFile::flush` 已做，但需核对 `flush_record_lsn` 的更新路径是否覆盖）。
+
+**迁移约束**：加密与明文段混存时读端能自动识别，但**同一段不得中途改形态**（加密启用后拒绝续写既有明文段，已实现）。
 
 ### 5.3 身份引导（完全缺失，阶段 2/3）
 

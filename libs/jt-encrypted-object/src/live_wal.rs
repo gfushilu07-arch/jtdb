@@ -212,7 +212,10 @@ pub struct LiveWalMeta {
 pub struct LiveWalWriter<'a> {
     aead: &'a dyn Aead,
     digest: &'a dyn Digest256,
-    rng: &'a mut dyn RandomSource,
+    /// RNG **由 writer 拥有**：它是唯一带可变状态的依赖，且需跨 await 存活
+    /// （Safekeeper 集成场景）。`aead`/`digest` 是 unit struct，`&Sm4Gcm` 会
+    /// 被 const-promote 为 `'static`，故仍借用即可。
+    rng: Box<dyn RandomSource + Send>,
     layout: LiveWalLayout,
     meta: LiveWalMeta,
     dek: Vec<u8>,
@@ -241,7 +244,7 @@ impl<'a> LiveWalWriter<'a> {
     pub fn create(
         aead: &'a dyn Aead,
         digest: &'a dyn Digest256,
-        rng: &'a mut dyn RandomSource,
+        rng: Box<dyn RandomSource + Send>,
         path: &Path,
         layout: LiveWalLayout,
         timeline_id: [u8; 16],
