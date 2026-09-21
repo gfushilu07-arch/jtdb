@@ -179,6 +179,55 @@ docs/04 §5 把 WAL 段对象描述为"追加式、64 KiB chunk 攒满即加密�
 
 docs/02 §11 列的 12 份文档中 **7 份尚未起草**：03-Compute 内核改造、06-控制平面、07-审计平面、08-国密与可信验证、09-开发体验与扩展生态、10-部署升级备份恢复、11-测试兼容性供应链。这些领域连规格都没有。
 
+## 5.8 挂账：等硬件（TCM/TPCM）支持
+
+**结论：暂时跳过，不阻塞其他开发**（2026-09-21 决策）。
+
+### 事实核实（基础2 实测）
+
+在 snsc-prod-基础2（47.122.4.83）上探测，**无 TCM/TPCM**：
+
+```text
+DMI:     Alibaba Cloud ECS（KVM 虚拟机）
+dmesg:   ima: No TPM chip found, activating TPM-bypass!
+lspci:   无 crypto/security/tpm 设备
+/dev:    无 /dev/tcm* /dev/tpm*
+内核:    CONFIG_TCG_TPM=y（驱动齐备，但无硬件可驱动）
+IMA:     仅 boot_aggregate 一条，且聚合值为全零（无硬件根）
+```
+
+**根因是虚拟化，不是缺驱动**：TCM 是独立物理安全芯片（自有 CPU/存储/密码单元，挂 LPC/SPI 总线），
+云上需厂商提供 vTPM 或设备直通，阿里云 ECS 默认不提供。且 **TCM 是国密标准（GM/T 0011/0012），
+与 TPM 2.0 不是一回事**——即便云上给 vTPM 也不能直接用于密评。
+
+### 为什么不阻塞其他开发（关键：证明不在关键路径上）
+
+| 事实 | 证据 |
+|---|---|
+| KMS 收到 `attestation_digest` **只做防重放检查**，不校验证明内容（不看 tier/PCR/度量） | `services/jt-kms/src/state.rs::check_attestation_fresh` 仅查摘要是否见过 |
+| `KeyReleaseGate` **未接入 KMS**（docs/02 §6.4 要求"证明参与密钥释放"，门槛已实现且有测试，但无人调用） | `grep KeyReleaseGate services/` 于 jt-kms 零命中 |
+| **KMS 没有 `require_tier1` 开关** | grep 零命中。**更正**：ADR-015（四十九/五十）中"KMS 侧配 `require_tier1 = off` 放行"的表述**不准确**，该开关不存在；如需开发模式放行，须先实现它 |
+
+故无 TCM 时：`SoftwareOnly` 证据照样能取到 DEK，全链路可跑通（功能验证有效），
+只是**不能声称满足生产承诺**（`effective_tier()` 已修为如实报 `SoftwareOnly`）。
+
+### 挂账项（等有 TCM 的服务器后一起做）
+
+| # | 项 | 说明 |
+|---|---|---|
+| H1 | 采集器硬件分支 | 读 `/dev/tcm0` 的 PCR 与 NV 防回滚计数器。接口已留好（`CollectorConfig.tcm_available` + `pcr_reader` 闭包），接硬件只需替换采集实现，不动协议与 KMS |
+| H2 | KMS 接 `KeyReleaseGate` | 让证明结论真正参与密钥释放（而非仅写日志）。**必须同时实现 H3**，否则无 TCM 的机器全被拒 |
+| H3 | `require_tier1` 开关 | KMS 侧显式开关：`true` = 生产（要求 Tier1），`false` = 开发/降级放行。当前不存在，需新写 |
+| H4 | 真实证明链路端到端 | Tier1 证据 → KMS 门槛 → 租约签发的完整验证（含 PCR 不匹配、计数器回退的拒绝路径） |
+| H5 | 密评材料中的证明章节 | 依赖 H1~H4 |
+
+### 明确不做（避免留下假证据）
+
+**不**在基础2 上模拟 TCM 设备（如 `swtpm`）。那会产出"看起来有硬件根信任"的证据，
+正是 `effective_tier` 自我夸大那类问题，密评时是硬伤。降级环境的正确定位是
+**如实标注 `SoftwareOnly`**，与 docs/12 §4.1 对软件熵源的处理同构
+（标 `rng_source=software` + 降级告警，而非伪装成硬件源）。
+
 ## 6. 优先级排序
 
 ### 6.1 排序准则
