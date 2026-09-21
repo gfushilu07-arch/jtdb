@@ -228,6 +228,60 @@ IMA:     仅 boot_aggregate 一条，且聚合值为全零（无硬件根）
 **如实标注 `SoftwareOnly`**，与 docs/12 §4.1 对软件熵源的处理同构
 （标 `rng_source=software` + 降级告警，而非伪装成硬件源）。
 
+## 5.10 架构发现：活段 WAL 加密与"就地覆盖"语义冲突（2026-09-21）
+
+**结论：现有活段加密实现（`live_wal.rs`，15/15 绿）无法直接接入 Safekeeper 的
+`PhysicalStorage`**，需先解决一处语义冲突。相关改动已回退（保留已验证的
+libs 15/15 + safekeeper 33/33 基线），仅保留本结论。
+
+### 冲突
+
+WAL 的固有语义是**就地覆盖**：
+
+```text
+1. HandleElected → initialize_first_segment(start_lsn)
+     └─ generate_wal_segment 返回**整段**（16 MiB：长页头 + 零填充），
+        经 write_at_abs(0, ...) 一次写入 offset 0..16MiB
+2. truncate_wal(start_lsn)  → write_lsn = start_lsn（典型 Lsn(1)）
+3. write_wal(Lsn(1), ...)   → **从 offset 1 起覆盖**刚写入的预填内容
+```
+
+而现有加密实现的约束是**chunk 不可变 + GCM 禁 nonce 重用**：一旦某 chunk 被
+封装，就不能再改写（否则同一 (key, nonce) 加密不同内容，灾难性）。步骤 1
+封装了 0..16MiB，步骤 3 却要改写 offset 1 所在的 chunk 0 → **冲突**。
+
+### 已尝试的方案与失败原因（记录以免重走）
+
+| 方案 | 结果 |
+|---|---|
+| 截断时删段重建 | 段头（`initialize_first_segment` 写的合法页头）随之丢失，后续 `write_wal` 报 "invalid xlog page header" |
+| 重建后重写段头 | writer 位置推进到 8 KiB，与 `write_lsn`（Lsn(1)）脱节，报 "must be sequential" |
+| 加 `reset_to(offset)` 重置位置 | 位置可重置，但截断点落在 chunk 0 内部时仍需改写已封装 chunk → 回到原冲突 |
+| 段头区（0..8 KiB）明文透传（同 Layer 的 `ENC_START`） | **方向正确**（段头本就不该被覆盖），但引入 `enc_start` 需同步改布局/读写/probe/测试四处，改动面大且引入新缺陷（`chunk_of` underflow、probe 口径不一致），本轮未收敛 |
+
+### 正确方向（待实现）
+
+**段头区明文透传**：0..`enc_start`（8 KiB）不加密，加密区从 8 KiB 起。理由：
+
+1. 段头由 `initialize_first_segment` 写一次、**后续不被覆盖**（pg_waldump 与
+   恢复都依赖它）——纳入加密无收益；
+2. 加密区起点与 PostgreSQL 页边界（8 KiB）对齐，chunk 划分天然整齐；
+3. 与 Layer 格式的 `ENC_START` 处理同构（`crate::stream`），架构一致。
+
+**残留待解**：`write_wal(Lsn(1))` 的偏移 1 **落在段头区内**（长页头 40B 内）。
+需先核实真实 Compute 的 `start_streaming_at` 取值与 WAL 流偏移语义（读
+`walproposer` 侧代码），再定 `enc_start` 与首个 WAL 记录的精确边界处理——
+否则"明文透传段头"会被首个写入改写。
+
+### 影响与建议
+
+- **不阻塞其他开发**：活段加密未接入不影响 Layer 加密、KMS、安全内核等；
+- **WAL 加密现状**：格式原语（对象路径 + 活段路径）已实现且测试充分
+  （`wal.rs` 16/16、`live_wal.rs` 15/15），**归档路径可用**；活段路径的
+  `PhysicalStorage` 接线待上述冲突解决；
+- **建议下一步**：先读 `walproposer` 侧代码核实 `start_streaming_at` 语义
+  （或抓包确认首个 AppendRequest 的 begin_lsn），再实现明文透传。
+
 ## 5.9 事故记录：基础2 全链路 OOM（2026-09-21）
 
 **现象**：在基础2（2C/7.3G）上启动 WAL 加密端到端验证时，全链路组件
