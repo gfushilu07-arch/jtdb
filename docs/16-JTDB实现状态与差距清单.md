@@ -130,13 +130,26 @@ docs/04 §5 把 WAL 段对象描述为"追加式、64 KiB chunk 攒满即加密�
 - **关键判据已测**：`encrypted_wal_file_does_not_contain_plaintext` —— 同一内容明文模式可直接看到、加密模式落盘字节不含明文且能解回。
 - **顺序性前提已核实**：`LiveWalWriter` 要求严格顺序追加，而 `safekeeper.rs` 的 append 处理与 `wal_storage.rs::write_wal` 都显式 `bail!` 拒绝重写与 gap，故无需为「重写既有偏移」设计。
 
-**剩余（三项，设计已定案 → ADR-016 §4）**：
+**已完成（集成面 6 点，2026-09-21，ADR-016 §4）**（子模块提交 `cbc116d`，safekeeper --lib 37/37 绿）：
 
-1. **端到端运行验证未做** —— 需真实 KMS 实例 + 真实 WAL 写入流（neon_local 全链路）。当前验证停在单元/集成层：加密写出的段不含明文、读回一致、格式自动识别。**这是"声称完成"与"证实完成"的差距**，应在下一轮补 neon_local 全链路冒烟（带 `--wal-encryption-kms-endpoint`）。
-2. **集成面 6 点未做**（ADR-016 §4）—— 必修 3 点：`find_end_of_wal` 加密感知变体（**唯一**读原始文件字节喂明文解码器的位置，启动时调用一次）、`open_or_create` 恢复写位置、`truncate_wal` 布局感知（libs 侧 `reset_to` 已实现+测试）；守卫 3 点（fail-closed）：S3 上传（现按 `wal_seg_size` 上传会**丢掉 tag 区与 header → 归档不可解**）、`copy_timeline`（现"解密→写明文"是**保密性静默降级**）、`pull_timeline`（快照内含加密段）。
-3. **key_epoch 轮换未接入** —— 当前 `WalEncryptionConfig.key_epoch` 为静态配置；ADR-013 的轮换状态机（`jt-key-epoch::rotation`）与 KMS `RotateNotify` 尚未驱动它。轮换时需按 epoch 切换 DEK 并处理旧段（旧段用旧 epoch 读，新段用新 epoch 写）。
+- **必修 1：`find_end_of_wal` 加密感知变体**（`wal_encryption::find_end_of_wal_enc`）——上游明文版是全仓唯一"原始文件字节 → 明文解码器"的消费者，在加密段上把密文当页头解析且**吞掉错误**（`xlog_utils.rs:280` `debug!` 后 `return Ok(result)`），表现为静默返回 `commit_lsn`（"之后的 WAL 全部当作不存在"）。新变体与上游逐行同构，仅每页先解密；启动路径按**文件格式**分派（与 `WalReader` 口径一致，不依赖配置）。**不修改上游函数**：它在 `libs/postgres_ffi` 经 `pgv` 宏按版本分发，引入 `jt-encrypted-object` 依赖会把版本分发复杂度外溢。
+- **必修 2：续写恢复写位置** —— `open_or_create_encrypted` 原用 `create_writer` 续写，而 `create` 会 `File::create` 截断重建、丢掉已封装 chunk 与 header。改用 `open_existing_writer`（从 tag 区反推位置）+ **epoch/generation 一致性校验**（不一致即拒绝：轮换边界，旧段只读，避免用错 DEK 或写出 AAD 不一致的 chunk）。`initialize_first_segment` 加密形态先 `reset_to(0)` 恢复上游的幂等语义。
+- **必修 3：`truncate_wal` 布局感知** —— 加密形态不能用 `set_len`（布局长度固定），改用 `reset_to(xlogoff)`：把含 `xlogoff` 的 chunk 用**新 nonce 重封**为 `xlogoff % chunk_size` 并清空其后 tag ⇒ 可读区间恰为 `[0, xlogoff)`。`xlogoff` **不必 chunk 对齐**（截断点是记录对齐）。加密形态保留句柄供紧随的 `write_wal` 续写；明文形态保持上游行为（丢弃句柄）逐字节不变。
+- **守卫 4：S3 上传拒绝加密段**（`wal_backup::backup_single_segment` + `wal_backup_partial::upload_segment`）——加密活段布局是「数据区 ‖ tag 区 ‖ header」，而上传按 `seg.size() = wal_seg_size` 只传前 S 字节 ⇒ **丢掉 tag 区与 header**，产物既非明文 WAL 也无法解密，归档**静默损坏**且要等恢复时才发现。
+- **守卫 5：`copy_timeline` 拒绝加密源** —— 该路径经 `WalReader` 读（已解密）再把明文写进目标段 ⇒ 目标以**明文**存有源的全部 WAL，是**静默的保密性降级**。判断在读之前做（一旦开始拷贝就已写出明文）。
+- **守卫 6：`WalReader` 加密段无 ctx 时 fail-closed** —— 原实现把整段逻辑放在 `if self.enc.is_some()` 内，于是"文件是加密的、但本进程没有加密上下文"（配置漂移、拉取/恢复来的时间线、CLI 漏传）会**落到明文路径**，把密文当明文 WAL 发给 compute。改为先探格式：加密则必须有 ctx。
 
-**已完成（三项，本轮）**：装配层注入（`WalEncryptionConfig::build_ctx` + CLI 六个参数 + `timeline.rs` 接线）、读路径切换（`WalReader` 解密分支 + `is_encrypted_segment` 按格式判定 + DEK/header 按段缓存）、flush 时序（`seal_tail` 与 fsync 分离，修正我引入的"每次写都 fsync"性能缺陷）。
+**libs 侧配套**（`jt-encrypted-object`，55/55，+8 项测试）：`LiveWalWriter::open_existing`（恢复写位置；用"第一段连续已写区间"而非"最后一个已写 chunk"——后者在 `reset_to` 中途崩溃留下空洞时会取到不可信区间；尾块明文**解密恢复**而非丢弃）、`LiveWalWriter::reset_to`（**任意偏移**；重封含截断点的 chunk 使可读区间恰为 `[0, offset)`——只清 tag 不够，旧尾部仍可读则截断失去意义；`offset > written` 时补零对齐上游 `set_len` 语义）、`create()` 改读写打开（原 `File::create` 只写，`reset_to` 读回密文报 "Bad file descriptor"）、`tail_buf` 改 `Zeroizing`（持有未加密 WAL 明文）。
+
+**实现期发现并修正的两处缺陷**：① 整段仅 1 个 chunk 且写了部分长度时，"无未写条目"被误判为"段写满"（`durable_len` 报 `seg_size` 而非真实值）——由新增集成测试 `open_existing_writer_continues_without_truncating` 抓出；② `walproposer_sim` 测试装置缺 `wal_encryption` 字段（**基线即编译失败**）。
+
+**剩余（两项）**：
+
+1. **端到端运行验证未做** —— 需真实 KMS 实例 + 真实 WAL 写入流（neon_local 全链路，**release 构建**，见 §5.9 OOM 教训）。当前验证停在单元/集成层：加密写出的段不含明文、读回一致、格式自动识别、恢复/截断语义。**这是"声称完成"与"证实完成"的差距**。
+   - 注意：safekeeper 的 `tests/*.rs` 集成测试在 **macOS 上无法链接**（`libwalproposer.a` 是 Linux 归档，`ld: archive member 'walproposer.o' not a mach-o file`）——既有环境限制，与本轮改动无关，须在 Linux 上跑。
+2. **key_epoch 轮换未接入** —— 当前 `WalEncryptionConfig.key_epoch` 为静态配置；ADR-013 的轮换状态机（`jt-key-epoch::rotation`）与 KMS `RotateNotify` 尚未驱动它。轮换时需按 epoch 切换 DEK 并处理旧段（旧段用旧 epoch 读，新段用新 epoch 写）——`open_existing_writer` 的 epoch 校验已为此准备好边界语义。
+
+**已完成（更早一轮）**：装配层注入（`WalEncryptionConfig::build_ctx` + CLI 六个参数 + `timeline.rs` 接线）、读路径切换（`WalReader` 解密分支 + `is_encrypted_segment` 按格式判定 + DEK/header 按段缓存）、flush 时序（`seal_tail` 与 fsync 分离，修正我引入的"每次写都 fsync"性能缺陷）。
 
 **迁移约束**：加密与明文段混存时读端能自动识别，但**同一段不得中途改形态**（加密启用后拒绝续写既有明文段，已实现）。
 
@@ -443,7 +456,9 @@ RSS 更大）超出可用内存。
 批次 1（本批）：S1 WAL 加密
     → 复用 libs/jt-encrypted-object 已有基础设施；补齐"全生命周期加密"最后一块
     → 交付物：Safekeeper WAL 段加密 + 追加式语义 + 运行时验证
-    → 设计已定案（ADR-016，2026-09-21）：格式零改动，剩集成面 6 点（§5.2.2）
+    → 设计已定案（ADR-016，2026-09-21）：格式零改动
+    → 集成面 6 点已完成（§5.2.2，libs 55/55 + safekeeper 37/37）
+    → 仅剩：基础2 端到端验证（release 构建）+ key_epoch 轮换接入
 
 批次 2：K5 逻辑复制 MLS 过滤
     → 堵住已实现 MAC 的唯一已知后门；pgoutput 单一收口点，改动可控
