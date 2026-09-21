@@ -150,9 +150,15 @@ docs/04 §5 把 WAL 段对象描述为"追加式、64 KiB chunk 攒满即加密�
 - **关键装置要求**：必须用 `restore_safekeeper_with_encryption`（`FileStorage::restore_new` 加载）而非 `create_new`——后者的 `commit_lsn == 0` 会让 `PhysicalStorage` 直接返回 `Lsn(0)`、**根本不读段文件**，测试会"重启成功"但从未验证恢复逻辑（第一版即如此，实测 `write_lsn` 停在 `start_lsn` 才发现）。
 - 三处装置陷阱（已记录在提交信息）：起点 LSN 必须页对齐（`generate_wal_segment` 断言 `seg_off >= 40`）；重启后必须重发 Elected；`start_streaming_at` 与 term_history 末项必须一致（否则触发 "attempt to truncate committed data" 保护）——后者恰好证明恢复出的写位置被真正使用。
 
+**已在基础2 真实 Linux x86_64 上跑通**（2026-09-21）：交叉编译 `--lib` 测试目标（`cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.28 -p safekeeper --no-default-features --lib`），传输后在真机执行——**41/41 全绿**（含上述两组 e2e）。这是目前最强的验证：真实 `SafeKeeper` + `PhysicalStorage` 的加密写入与恢复路径，跑在真实生产平台上（非 mock、非模拟）。
+- 为何用 `--lib` 而非全量：`tests/*.rs` 会链 `walproposer_sim`（引用 walproposer 符号），而 `build/walproposer-lib/libwalproposer.a` 是**交叉构建残留**（Linux aarch64），macOS 与 x86_64 交叉构建都无法链接；`--lib` 不引用那些符号，故可用。加密路径本身与平台无关。
+
 **剩余（一项）**：
 
-1. **neon_local 全链路验证未做**（真实 KMS + compute + pageserver 全链路，**release 构建**，见 §5.9 OOM 教训）。上面的 e2e 已覆盖"加密写入 + 恢复"的真实代码路径（真实 `SafeKeeper`/`PhysicalStorage`，非 mock），但未覆盖跨组件装配（neon_local 转发 `--safekeeper-extra-opt`、storcon 建 timeline、compute 经 pageserver 读回）。分阶段脚本已备：`scripts/wal-enc-staged-b2.sh`（只起 KMS + storcon + broker + safekeeper，不起 pageserver/compute，以适配基础2 的 3GB 可用内存）。
+1. **neon_local 全链路验证未做**（真实 KMS + compute + pageserver 全链路，**release 构建**，见 §5.9 OOM 教训）。上面已验证"加密写入 + 恢复"的真实代码路径，但未覆盖**跨组件装配**（neon_local 转发 `--safekeeper-extra-opt`、storcon 建 timeline、compute 经 pageserver 读回）。
+   - 分阶段脚本已备：`scripts/wal-enc-staged-b2.sh`（只起 KMS + storcon + broker + safekeeper，不起 pageserver/compute，以适配基础2 的 3GB 可用内存）。
+   - **未跑的原因（诚实记录）**：基础2 可用内存 3087MB（业务容器占 4GB），全链路脚本的 3000MB 阈值刚好卡在边界；上一轮全链路已导致整机 OOM（§5.9）。故本轮选择"在真机跑真实代码路径的测试二进制"这条零风险路径，把跨组件装配留到有更大规格机器或业务低峰期。
+   - **环境阻塞（需修，否则 macOS 上跑不了 safekeeper 集成测试）**：`build/walproposer-lib/{libwalproposer,libpgport,libpgcommon}.a` 与 `pg_install/v17`、`pgxs-pg18-fork` 均为 **aarch64**，需用 x86_64 PG 安装树重建这三份归档。
 2. **key_epoch 轮换未接入** —— 当前 `WalEncryptionConfig.key_epoch` 为静态配置；ADR-013 的轮换状态机（`jt-key-epoch::rotation`）与 KMS `RotateNotify` 尚未驱动它。轮换时需按 epoch 切换 DEK 并处理旧段（旧段用旧 epoch 读，新段用新 epoch 写）——`open_existing_writer` 的 epoch 校验已为此准备好边界语义。
 
 **已完成（更早一轮）**：装配层注入（`WalEncryptionConfig::build_ctx` + CLI 六个参数 + `timeline.rs` 接线）、读路径切换（`WalReader` 解密分支 + `is_encrypted_segment` 按格式判定 + DEK/header 按段缓存）、flush 时序（`seal_tail` 与 fsync 分离，修正我引入的"每次写都 fsync"性能缺陷）。
