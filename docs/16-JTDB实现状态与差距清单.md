@@ -143,10 +143,16 @@ docs/04 §5 把 WAL 段对象描述为"追加式、64 KiB chunk 攒满即加密�
 
 **实现期发现并修正的两处缺陷**：① 整段仅 1 个 chunk 且写了部分长度时，"无未写条目"被误判为"段写满"（`durable_len` 报 `seg_size` 而非真实值）——由新增集成测试 `open_existing_writer_continues_without_truncating` 抓出；② `walproposer_sim` 测试装置缺 `wal_encryption` 字段（**基线即编译失败**）。
 
-**剩余（两项）**：
+**真实 SafeKeeper 全生命周期端到端验证已完成**（2026-09-21，`wal_encryption::e2e_tests`，`--lib` **41/41 绿**）：
 
-1. **端到端运行验证未做** —— 需真实 KMS 实例 + 真实 WAL 写入流（neon_local 全链路，**release 构建**，见 §5.9 OOM 教训）。当前验证停在单元/集成层：加密写出的段不含明文、读回一致、格式自动识别、恢复/截断语义。**这是"声称完成"与"证实完成"的差距**。
-   - 注意：safekeeper 的 `tests/*.rs` 集成测试在 **macOS 上无法链接**（`libwalproposer.a` 是 Linux 归档，`ld: archive member 'walproposer.o' not a mach-o file`）——既有环境限制，与本轮改动无关，须在 Linux 上跑。
+- `encrypted_safekeeper_full_lifecycle`：Elected → truncate → append 真实记录 → 断言段文件是**加密布局**（末尾 130B 以 `JTENCOBJ` 开头）且**数据区不含明文写入内容**（直接字节比对，比 grep 特征串更强）。这条路径正是"活段加密与就地覆盖语义冲突"的发生地（§5.10）。
+- `encrypted_safekeeper_restart_and_continue`：写入若干**合法 WAL 记录**（`WalGenerator` 产出）→ 用**加载路径**重建 → 断言写位置从磁盘恢复 → 重发 Elected → 继续 append 成功。实测 `before restart: write_lsn=0/1320` / `after restart: write_lsn=0/1320`，即 `find_end_of_wal_enc` 确实从加密段里定位到了 WAL 末尾。
+- **关键装置要求**：必须用 `restore_safekeeper_with_encryption`（`FileStorage::restore_new` 加载）而非 `create_new`——后者的 `commit_lsn == 0` 会让 `PhysicalStorage` 直接返回 `Lsn(0)`、**根本不读段文件**，测试会"重启成功"但从未验证恢复逻辑（第一版即如此，实测 `write_lsn` 停在 `start_lsn` 才发现）。
+- 三处装置陷阱（已记录在提交信息）：起点 LSN 必须页对齐（`generate_wal_segment` 断言 `seg_off >= 40`）；重启后必须重发 Elected；`start_streaming_at` 与 term_history 末项必须一致（否则触发 "attempt to truncate committed data" 保护）——后者恰好证明恢复出的写位置被真正使用。
+
+**剩余（一项）**：
+
+1. **neon_local 全链路验证未做**（真实 KMS + compute + pageserver 全链路，**release 构建**，见 §5.9 OOM 教训）。上面的 e2e 已覆盖"加密写入 + 恢复"的真实代码路径（真实 `SafeKeeper`/`PhysicalStorage`，非 mock），但未覆盖跨组件装配（neon_local 转发 `--safekeeper-extra-opt`、storcon 建 timeline、compute 经 pageserver 读回）。分阶段脚本已备：`scripts/wal-enc-staged-b2.sh`（只起 KMS + storcon + broker + safekeeper，不起 pageserver/compute，以适配基础2 的 3GB 可用内存）。
 2. **key_epoch 轮换未接入** —— 当前 `WalEncryptionConfig.key_epoch` 为静态配置；ADR-013 的轮换状态机（`jt-key-epoch::rotation`）与 KMS `RotateNotify` 尚未驱动它。轮换时需按 epoch 切换 DEK 并处理旧段（旧段用旧 epoch 读，新段用新 epoch 写）——`open_existing_writer` 的 epoch 校验已为此准备好边界语义。
 
 **已完成（更早一轮）**：装配层注入（`WalEncryptionConfig::build_ctx` + CLI 六个参数 + `timeline.rs` 接线）、读路径切换（`WalReader` 解密分支 + `is_encrypted_segment` 按格式判定 + DEK/header 按段缓存）、flush 时序（`seal_tail` 与 fsync 分离，修正我引入的"每次写都 fsync"性能缺陷）。
