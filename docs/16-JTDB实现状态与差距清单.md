@@ -259,28 +259,55 @@ WAL 的固有语义是**就地覆盖**：
 | 加 `reset_to(offset)` 重置位置 | 位置可重置，但截断点落在 chunk 0 内部时仍需改写已封装 chunk → 回到原冲突 |
 | 段头区（0..8 KiB）明文透传（同 Layer 的 `ENC_START`） | **方向正确**（段头本就不该被覆盖），但引入 `enc_start` 需同步改布局/读写/probe/测试四处，改动面大且引入新缺陷（`chunk_of` underflow、probe 口径不一致），本轮未收敛 |
 
-### 正确方向（待实现）
+### 根因已定位（2026-09-21，读 walproposer 源码 + 逐层诊断）
 
-**段头区明文透传**：0..`enc_start`（8 KiB）不加密，加密区从 8 KiB 起。理由：
+**冲突的本质已查清，且解法明确**。关键事实（均有代码/实测依据）：
 
-1. 段头由 `initialize_first_segment` 写一次、**后续不被覆盖**（pg_waldump 与
-   恢复都依赖它）——纳入加密无收益；
-2. 加密区起点与 PostgreSQL 页边界（8 KiB）对齐，chunk 划分天然整齐；
-3. 与 Layer 格式的 `ENC_START` 处理同构（`crate::stream`），架构一致。
+**事实 1：WAL 截断点必然页对齐** —— `startStreamingAt` 的三个来源
+（`GetRedoStartLsn()`、`voteResponse.flushLsn`、`Min(propEndLsn, skEndLsn)`，
+见 `pgxn/neon/walproposer.c:1469-1495`）**都是页边界对齐的 LSN**；而 PostgreSQL
+页大小（8 KiB）与本 writer 的 chunk 大小一致 ⇒ **截断点必然落在 chunk 边界**。
+故"回退到 chunk 边界 + 重新封装该 chunk（新 nonce）"足以支撑 WAL 的就地覆盖语义。
 
-**残留待解**：`write_wal(Lsn(1))` 的偏移 1 **落在段头区内**（长页头 40B 内）。
-需先核实真实 Compute 的 `start_streaming_at` 取值与 WAL 流偏移语义（读
-`walproposer` 侧代码），再定 `enc_start` 与首个 WAL 记录的精确边界处理——
-否则"明文透传段头"会被首个写入改写。
+**事实 2：段头会被真实流覆盖** —— 源码注释明确："Safekeepers don't skip header
+as they need continuous stream of data"（`walproposer.c:1392-1394`）。故"段头区
+明文透传"的设想**不成立**（段头本就会被覆盖）。**真正的解法是事实 1 的 chunk
+边界回退**，不需要引入 `enc_start`。
 
-### 影响与建议
+**事实 3（真正的阻塞点）：`initialize_first_segment` 不保存文件句柄** ——
+`wal_storage.rs:531` 取 `open_or_create` 的 file、写完 16 MiB 后**直接丢弃**
+（未 `self.file = Some(file)`）。于是紧随其后的 `truncate_wal` 里
+`open_or_create` 会**新建一个 writer**，其位置为 0，与 `write_lsn`（截断点）
+脱节 → 报 "must not move forward past written data"。
+
+**已实测确认的中间结论**（诊断输出）：
+- `initialize_first_segment` 确实写出了**加密段**：文件 `0000...000.partial`
+  大小 16,842,882 B = 16 MiB 数据区 + 2048×32 B tag 区 + 130 B header ✓
+- 全部 2048 个 chunk 的 tag 条目 `plain_len=8192`（已封装）✓
+- 若 `open_existing` 正确恢复位置，应得 `written=16 MiB`，则回退到 8 KiB 合法 ✓
+
+**剩余待做（一处，明确）**：让"续写既有段"真正恢复位置。要点：
+
+1. `open_existing` **不能先 `create`** —— `create` 会 `File::create` 截断文件并
+   重写 header，把既有 tag 区清零（实测：本应扫出 16 MiB，因 create 先执行而得 0）。
+   须**先扫 tag 区取位置**，再以 `OpenOptions::read(true).write(true)` 打开既有文件；
+2. 续写时 AAD 依赖的 `header_digest` 必须取自**既有 header**（`create` 时算的
+   是同一值，但重建 writer 需重新读取），否则 AEAD 校验失败；
+3. `LiveWalWriter` 需暴露一个"从既有段构造"的入口（字段初始化顺序需调整：
+   当前 `header_digest` 由 `create` 内部计算并存入局部变量，未作为字段持久化）。
+
+**教训**：这轮我在同一处反复试错（删段重建 → 重写段头 → `reset_to` →
+`enc_start` 明文透传 → `open_existing`），根因是**未先读上游调用序列**就动手。
+若一开始就读 `HandleElected`（`safekeeper.rs:1185-1200`）与 `walproposer.c` 的
+`startStreamingAt` 计算，可省去前四种方案。**后续遇到集成类冲突，先读调用链
+再设计。**
+
+### 影响
 
 - **不阻塞其他开发**：活段加密未接入不影响 Layer 加密、KMS、安全内核等；
-- **WAL 加密现状**：格式原语（对象路径 + 活段路径）已实现且测试充分
-  （`wal.rs` 16/16、`live_wal.rs` 15/15），**归档路径可用**；活段路径的
-  `PhysicalStorage` 接线待上述冲突解决；
-- **建议下一步**：先读 `walproposer` 侧代码核实 `start_streaming_at` 语义
-  （或抓包确认首个 AppendRequest 的 begin_lsn），再实现明文透传。
+- **WAL 加密现状**：格式原语已实现且测试充分（`wal.rs` 16/16、`live_wal.rs` 15/15），
+  **归档路径可用**；活段路径待上述"续写恢复位置"完成（单点，方向明确）；
+- 相关改动已回退，基线干净（libs 15/15、safekeeper 33/33）。
 
 ## 5.9 事故记录：基础2 全链路 OOM（2026-09-21）
 
