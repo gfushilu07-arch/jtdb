@@ -151,3 +151,62 @@ impl CryptoBackend {
         Ok(())
     }
 }
+
+/// 随机数来源分级（docs/12 §4.1）。
+///
+/// 优先级：TCM/TPCM 内置 DRBG > 密码卡/HSM DRBG > OS CSPRNG（受控回退）。
+/// 使用最低一级时组件须标记降级（见 [`RandomSource::is_degraded`]），
+/// 按 docs/12 §4.1 触发告警 + 审计 + KMS 拒发新 DEK（fail-closed）；
+/// 单机开发嵌入模式可豁免。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RngSource {
+    /// TCM/TPCM 内置 DRBG（物理噪声源）——首选。
+    TcmDrbg,
+    /// 密码卡 / HSM 的 DRBG。
+    HsmDrbg,
+    /// OS 内核 CSPRNG（`getrandom()`）——受控回退。
+    OsCsprng,
+}
+
+impl RngSource {
+    /// 是否为受控回退（须标记 `rng_source=software` 并进降级状态）。
+    pub fn is_software_fallback(&self) -> bool {
+        matches!(self, RngSource::OsCsprng)
+    }
+
+    /// 供审计/指标使用的稳定标识。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RngSource::TcmDrbg => "tcm-drbg",
+            RngSource::HsmDrbg => "hsm-drbg",
+            RngSource::OsCsprng => "software",
+        }
+    }
+}
+
+/// 随机数抽象（docs/12 §4.3：供数接口与硬件 DRBG 统一，上层无感）。
+///
+/// **安全要求**：
+/// * 种子必须来自硬件源或 OS CSPRNG，**禁止时间/进程号等弱熵源**；
+/// * 实现须通过健康检测（KAT + 连续性测试，docs/12 §4.2），失败即
+///   fail-closed（返回错误而非降级输出弱随机）；
+/// * `fill` 失败时不得返回部分填充的缓冲区内容。
+pub trait RandomSource: Send + Sync {
+    /// 填充 `dest` 为密码学安全随机字节。失败必须返回错误。
+    fn fill(&mut self, dest: &mut [u8]) -> Result<(), CryptoError>;
+
+    /// 来源分级（用于降级判定与审计标记）。
+    fn source_kind(&self) -> RngSource;
+
+    /// 是否处于降级状态（默认由来源分级推导；硬件源故障后也可为 true）。
+    fn is_degraded(&self) -> bool {
+        self.source_kind().is_software_fallback()
+    }
+
+    /// 便捷：取 N 字节。
+    fn bytes(&mut self, n: usize) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+        let mut v = Zeroizing::new(vec![0u8; n]);
+        self.fill(v.as_mut_slice())?;
+        Ok(v)
+    }
+}

@@ -97,9 +97,9 @@
 | # | 缺口 | 作用 | 证据 |
 |---|---|---|---|
 | S1 | **WAL 加密**（进行中） | 只加密 Layer 而 WAL 明文 = 加密承诺残缺：写前日志含全部数据变更 | **libs 层已实现**：`libs/jt-encrypted-object/src/wal.rs`（追加式 `WalSegWriter` + `seal_wal_segment`/`unseal_wal_segment`，16/16 绿）。**活段文件仍未加密**——见下方 §5.2.1 的架构裁决 |
-| S2 | **nonce 方案与格式冻结** | `base_nonce` 实际由**文件名派生**（`SM3("jtdev-nonce:"‖timeline‖filename)`），与 docs/04 §3.1 / docs/12 §4.4 规定的"每对象随机取自 DRBG"不一致；同一文件重写复用 nonce，是 rekey/加密擦除隐患。docs/04 §9.4 冻结前置条件未闭环 | `pageserver/src/storage_encryption.rs` 派生逻辑 |
+| S2 | ~~nonce 方案~~ **已闭环** | `base_nonce` 改为**每对象随机取自 DRBG**（符合 docs/04 §3.1 / docs/12 §4.4）；`Sm4CtrDrbg` 已实现（`libs/jt-crypto-sm/src/drbg.rs`，10/10）+ `RandomSource` trait（`jt-crypto-api`）。**格式向后兼容**（nonce 本就在 header offset 86..98，读取端从 header 取值），已落盘对象无需重加密。**剩余**：docs/04 §9.4 的"密码专项评审"仍属流程项（需人工评审签字），非代码项 | 见 ADR-015（四十六） |
+| S4 | DRBG 与随机数治理 | TCM DRBG > 密码卡/HSM > OS CSPRNG 分级 + `rng_source` 标记 + 软件回退时 KMS 拒发新 DEK | **部分实现**：`Sm4CtrDrbg`（CTR_DRBG + KAT + 连续性 + 重播种周期，10/10）+ `RngSource` 三级枚举 + `is_degraded()`。**缺**：TCM/HSM 硬件源接入、KMS 侧"降级拒发新 DEK"联动 |
 | S3 | **BranchKeyGrant** | ADR-014 分支授权：分支只能解密到分支点、epoch ≤ max_epoch | `services/jt-kms` grep 零命中（协议层 `libs/jt-storage-protocol` 已实现 `authorizes()`） |
-| S4 | DRBG 与随机数治理 | TCM DRBG > 密码卡/HSM > OS CSPRNG 分级 + `rng_source` 标记 + 软件回退时 KMS 拒发新 DEK | 仅 OS CSPRNG 一级；无 DRBG 实例 |
 | S5 | compaction/GC 与 `jtdb rekey` | 重加密时新旧对象并存、引用计数删除 | 无 |
 | S6 | 签名 Manifest | §4.7 对象清单签名（防回滚计数器已有） | 无 |
 | S7 | 对象 nonce 重放/搬移测试 | 重放旧 generation 对象、`wrapped_dek` 搬移到其他对象 | 矩阵 11 项未覆盖 |
