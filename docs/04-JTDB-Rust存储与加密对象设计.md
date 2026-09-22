@@ -196,7 +196,8 @@ Pageserver 页缓存命中时无解密；未命中时代价 = 1 chunk 解密（6
 
 **AAD**（docs/02 §4.4）：`timeline_id || seg_no || chunk_index || chunk_plain_off || key_epoch || generation || plain_len`——跨段/跨偏移/跨 epoch 搬移均可检出。
 
-**阻塞项状态**：nonce 方案**已闭环**（S2：每 chunk 独立随机 nonce 取自 DRBG；`Sm4CtrDrbg` + `RandomSource` 已实现）。剩余为 §9.4 的**密码专项评审**（流程项，需人工评审签字）。**尚未接线**：Safekeeper 的 `wal_storage.rs` 仍写明文——格式原语已就位，接线点见 docs/16 §5.2.2。
+**阻塞项状态**：nonce 方案**已闭环**（S2：每 chunk 独立随机 nonce 取自 DRBG；`Sm4CtrDrbg` + `RandomSource` 已实现）。§9.4 的**密码专项评审已完成**（2026-09-22 签署，见 docs/12 §8）。**接线状态**：Safekeeper 的 `wal_storage.rs` **已完成接线**（ADR-016，集成面 6 点全部落地，
+真机 41/41 验证）。剩余见 docs/16 §5.2.2（neon_local 全链路跨组件验证、key_epoch 轮换状态机驱动）。
 
 ### 5.2.1 布局定案与集成面（ADR-016，2026-09-21）
 
@@ -258,6 +259,9 @@ dek_scope_digest = SM3(cluster_id || timeline_id || epoch || lsn_range)   # ADR-
 2. 读者必须接受"当前版本 -1"的窗口，跨窗口由 rekey/compaction 在线迁移；
 3. 未知 flags 位忽略；未知 metadata TLV 跳过（§3.2）；
 4. **格式冻结前置条件**：SM4 模式与 nonce 方案经 docs/12 密码专项评审通过。
+   → **该条件已满足**（2026-09-22，评审记录见 docs/12 §8）：SM4-GCM + 每对象/每 chunk
+     独立随机 nonce 已冻结。**但格式尚未整体冻结**——docs/12 §8.3 列出的其余未闭环项
+     （KDF 结构、硬件随机数源、compaction/rekey 演进规则的真实数据验证）仍待完成。
 
 ## 10. 测试标准
 

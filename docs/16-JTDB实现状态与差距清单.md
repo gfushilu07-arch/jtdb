@@ -29,7 +29,7 @@
 
 | 阶段 | 判定条件 | 状态 | 缺口 |
 |---|---|---|---|
-| 0 架构冻结 | 四份 ADR 签字、对象格式文档冻结、SLO 表定稿 | **部分完成** | ADR-011~014 已成文；**对象格式未获准冻结**（docs/04 §9.4 前置条件"密码专项评审"未闭环，且 nonce 方案与规格不一致，见 §5.2）；SLO 正式数字仍待规格机 |
+| 0 架构冻结 | 四份 ADR 签字、对象格式文档冻结、SLO 表定稿 | **部分完成** | ADR-011~014 已成文；**密码专项评审已签署**（2026-09-22，docs/12 §8）⇒ docs/04 §9.4 的冻结前置条件之一已满足；**但对象格式仍未整体冻结**（docs/12 §8.3 列出的 KDF 结构、硬件随机数源、compaction/rekey 演进规则验证仍缺）；SLO 正式数字仍待规格机 |
 | 1 可运行基座 | 两平台 CI 绿线；`jtdb dev start --embedded` 可用 | **部分完成** | PG18 全链路在 macOS + Linux（基础2）跑通，版本矩阵 v14~v18 冒烟+功能套件全绿；**`jtdb` CLI 不存在**；**无 CI 配置** |
 | 2 安全内核第一层 | 逃逸路径清单清零；对象级 MAC 回归 + SLO 达标 | **接近完成** | 安全上下文/三权分立/超管围栏/表级 MAC/统一错误码/E2 审计事件已落地，58 项运行时断言全绿；**逃逸清单未清零**（dblink、PL/Python、调试路径）；**对象级 MAC SLO 未测**；网关 TLCP 未实现 |
 | 3 存储安全与 KMS | 轮换中断注入、KMS 断网、防回滚重放测试全绿 | **部分完成** | Layer 加密 + KMS 租约/轮换/防回滚已实现并有单测；**WAL 加密未实现**；**BranchKeyGrant 未实现**；行级标记存储未开始；三项端到端注入测试未见 |
@@ -96,7 +96,7 @@
 | # | 缺口 | 作用 | 证据 |
 |---|---|---|---|
 | S1 | **WAL 加密**（读写路径 + 装配均已接通） | 只加密 Layer 而 WAL 明文 = 加密承诺残缺：写前日志含全部数据变更 | **libs**：`wal.rs`（16/16）+ `live_wal.rs`（15/15）+ `kms_provider.rs`（租约驱动 DEK 供给，33/33 含 10 项新测试）。**Safekeeper 三处已接通**：写路径（WalFile 形态分派）、读路径（WalReader 解密分支 + 按格式判定）、装配（CLI 开关 + 租约 provider 注入 + flush 时序修正）。**33/33 绿**，含「落盘不含明文」判据。**剩余**见 §5.2.2 |
-| S2 | ~~nonce 方案~~ **已闭环** | `base_nonce` 改为**每对象随机取自 DRBG**（符合 docs/04 §3.1 / docs/12 §4.4）；`Sm4CtrDrbg` 已实现（`libs/jt-crypto-sm/src/drbg.rs`，10/10）+ `RandomSource` trait（`jt-crypto-api`）。**格式向后兼容**（nonce 本就在 header offset 86..98，读取端从 header 取值），已落盘对象无需重加密。**剩余**：docs/04 §9.4 的"密码专项评审"仍属流程项（需人工评审签字），非代码项 | 见 ADR-015（四十六） |
+| S2 | ~~nonce 方案~~ **已闭环（含密码专项评审签署，2026-09-22）** | `base_nonce` 改为**每对象随机取自 DRBG**（符合 docs/04 §3.1 / docs/12 §4.4）；`Sm4CtrDrbg` 已实现（`libs/jt-crypto-sm/src/drbg.rs`，10/10）+ `RandomSource` trait（`jt-crypto-api`）。**格式向后兼容**（nonce 本就在 header offset 86..98，读取端从 header 取值），已落盘对象无需重加密。**评审已签署**（2026-09-22，docs/12 §8） | 见 ADR-015（四十六）、docs/12 §8 |
 | S4 | DRBG 与随机数治理 | TCM DRBG > 密码卡/HSM > OS CSPRNG 分级 + `rng_source` 标记 + 软件回退时 KMS 拒发新 DEK | **部分实现**：`Sm4CtrDrbg`（CTR_DRBG + KAT + 连续性 + 重播种周期，10/10）+ `RngSource` 三级枚举 + `is_degraded()`。**缺**：TCM/HSM 硬件源接入、KMS 侧"降级拒发新 DEK"联动 |
 | S3 | **BranchKeyGrant** | ADR-014 分支授权：分支只能解密到分支点、epoch ≤ max_epoch | `services/jt-kms` grep 零命中（协议层 `libs/jt-storage-protocol` 已实现 `authorizes()`） |
 | S5 | compaction/GC 与 `jtdb rekey` | 重加密时新旧对象并存、引用计数删除 | 无 |
