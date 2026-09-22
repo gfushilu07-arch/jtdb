@@ -1,0 +1,27 @@
+[package]
+name = "jt-identity"
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-JTDB-Proprietary"
+
+[[bin]]
+name = "jt-identity"
+path = "src/main.rs"
+
+[dependencies]
+jt-crypto-api = { path = "../../libs/jt-crypto-api" }
+jt-crypto-sm = { path = "../../libs/jt-crypto-sm" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+parking_lot = "0.12"
+hex = "0.4"
+thiserror = "1"
+rand = "0.8"
+clap = { version = "4", features = ["derive"] }
+openssl = "0.10"
+tokio-openssl = "0.6"
+zeroize = "1"
