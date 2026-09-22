@@ -2,3 +2,6 @@ verification/tla2tools.jar
 verification/states/
 verification/*_TTrace_*.tla
 .DS_Store
+
+# ZCode 工具产物（计划/草稿），不入库
+.zcode/
