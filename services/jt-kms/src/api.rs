@@ -236,6 +236,20 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/v1/rotation/begin", post(rotation_begin))
         .route("/v1/rotation/advance", post(rotation_advance))
         .route("/v1/rotation/status/{timeline}", get(rotation_status))
+        /*
+         * 鉴权中间件。
+         *
+         * **必须挂在这里**（而非仅在 TLS acceptor 上）：mTLS 只保证"连接
+         * 有可信证书"，而 Bearer token 是独立的一道门；且当运维选择
+         * "仅 bearer token"（不开 TLS）时，中间件是**唯一**的鉴权点。
+         *
+         * 顺序：`from_fn_with_state` 的中间件在 handler 之前运行，故未通过
+         * 鉴权的请求不会进入任何业务逻辑（也就不会触碰密钥材料）。
+         */
+        .layer(axum::middleware::from_fn_with_state(
+            app.clone(),
+            crate::tls::auth_middleware,
+        ))
         .with_state(app)
 }
 

@@ -41,6 +41,26 @@ export JTDB_CONTAINER_CARGO_HOME="$JTDB_CACHE_ROOT/cargo-container"
 export POSTGRES_INSTALL_DIR="$JTDB_PG_INSTALL"              # postgres_ffi bindgen 头文件
 export POSTGRES_DISTRIB_DIR="$JTDB_DISTRIB"                 # neon_local 定位 PG 安装树
 
+# ---- 密码后端：**必须指向 Tongsuo 安装树**（docs/12 §3.3 合规主路径） ----
+# openssl-sys 靠 OPENSSL_DIR 定位安装树。**只在本 crate 的 build.rs 里发
+# rustc-link-search 是不够的**——依赖的 build script 先于本 crate 运行，它会
+# 走自己的发现逻辑，在 macOS 上命中 Homebrew 的 openssl@3（实测链接到
+# /opt/homebrew/opt/openssl@3/lib，版本 3.6.3），而**不是** Tongsuo。
+#
+# 后果隐蔽且严重：编译通过、KAT 也过（SM3/SM4-GCM 两边都有），但用的是
+# **不含 NTLS/TLCP 与 SM2 TLS 的 OpenSSL**——TLCP 握手会到运行期才失败。
+# docs/16 §4 早已记录该现象（"实测链接的是 Homebrew OpenSSL 3 而非认证
+# Tongsuo 构建树"），此处即为根因修复：在单一事实源里显式导出。
+#
+# OPENSSL_NO_VENDOR=1 禁止 openssl-sys 去 vendor 源码自建（那会绕开 Tongsuo
+# 且构建耗时巨大）。交叉编译到 linux 时由构建脚本改指 tongsuo-linux 树。
+export JTDB_TONGSUO_DIR="$JTDB_BUILDS/tongsuo"
+export JTDB_TONGSUO_LINUX_DIR="$JTDB_BUILDS/tongsuo-linux"
+if [ -d "$JTDB_TONGSUO_DIR/lib" ]; then
+  export OPENSSL_DIR="$JTDB_TONGSUO_DIR"
+fi
+export OPENSSL_NO_VENDOR=1
+
 # ---- 构建镜像（build/README.md §5） ----
 export JTDB_BUILD_IMAGE="jtbuild:bookworm-20260904"
 
