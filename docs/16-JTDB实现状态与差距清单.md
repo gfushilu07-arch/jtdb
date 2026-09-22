@@ -45,7 +45,7 @@
 | 上游基线 | **已实现** | release-9129 固化 + PG18 fork + 补丁治理（`postgres/jtdb-patches/0001-*.patch`，3253 行，pristine 基线可 apply 且逐文件比对一致）+ 版本矩阵 5/5 |
 | Compute 适配 | **部分** | 安全上下文（表级）+ MAC 钩子（读/写/COPY/TRUNCATE/DDL）+ 逃逸围栏 + 统一错误码 + E2 事件 + **逻辑复制过滤（表级，§5.11）** + **逃逸清单清零（§5.12）**；缺行级、谓词注入 |
 | Rust 存储 | **部分** | 加密对象 v1 + key epoch + **Layer 加密**（pageserver，270/270 nextest）；缺 WAL 加密、Safekeeper 加密、compaction/GC、rekey |
-| 控制平面 | **部分** | jt-controller / jt-pdp / jt-kms / jt-attest 四服务（共 86 项测试）；**jt-identity 完全缺失**；jt-pdp 无服务面 |
+| 控制平面 | **部分** | jt-controller / jt-pdp / jt-kms / jt-attest 四服务；**jt-identity 完全缺失**；jt-pdp 无服务面。**jt-kms 鉴权已修**（§5.13：真 mTLS + Bearer，此前完全无鉴权） |
 | 审计平面 | **部分** | proto / ingest / store / tsa 四层闭环（25 项测试）；缺远程见证、离线校验器、多源实际接入、留存容量模型、查询接口 |
 | 接入平面 | **未实现** | jt-gateway 仅连接池逻辑层（17 项测试）；TLCP / PG wire / SQL 防火墙 / 事务级驱动 / 内核复位例程全缺 |
 | 开发体验 | **未实现** | CLI / 分支脱敏 / 迁移 / 策略即代码 / 诊断全缺 |
@@ -194,7 +194,7 @@ docs/04 §5 把 WAL 段对象描述为"追加式、64 KiB chunk 攒满即加密�
 | C2 | jt-controller 剩余 | 备份策略编排、安全管理员操作、进程生命周期驱动、mTLS 鉴权、多实例共识 |
 | C3 | 审计平面剩余 | 远程见证、离线校验器、多源（Gateway/Pageserver/Safekeeper/PDP/KMS）实际接入、6 个月留存容量模型、查询接口 |
 | C4 | jt-audit-store 未接 TSA | `Checkpoint.tsa_token` 字段存在但未接线 |
-| C5 | jt-kms 未接审计平面 | 只有本地 hash 链日志，未接 jt-audit-ingest |
+| C5 | jt-kms 未接审计平面 | 只有本地 hash 链日志，未接 jt-audit-ingest。**注**：其**鉴权缺口已修**（§5.13，真 mTLS + Bearer） |
 
 ### 5.6 产品化（阶段 5，未开始）
 
@@ -559,6 +559,86 @@ file_fdw 的 filename/program 选项（§10/§10b）。**本批补齐**：
    `PGC_USERSET`，理论上可让低密主体把高密查询的计划（含常量值）打印到日志。
    本轮未改——需先判定"计划文本是否算敏感数据"这一**规格问题**，不宜拍脑袋。
 
+## 5.13 jt-kms 鉴权缺口：已修（2026-09-21）
+
+**结论：jt-kms 从"完全无鉴权"变为"真 mTLS + Bearer 两道门"**（提交 `f7a9310`，
+e2e **11/11** `KMS_MTLS_OK`，单测 30/30）。
+
+### 缺口（先探测再实现）
+
+**整个 `AuthConfig` 都是摆设**：
+
+| 项 | 现状 |
+|---|---|
+| `--client-ca` | 只填充 `require_client_cert`，该字段**除定义处零引用** |
+| `--auth-token` | 填充 `bearer_token`，同样零引用 |
+| `rustls`/`tokio-rustls` | `Cargo.toml` 里声明，`src/` 中**零引用** |
+| 实际传输 | **明文 HTTP** |
+
+**实测证据**：以 `--auth-token SECRET123` 启动后，**不带任何凭据**的请求仍能
+抵达业务逻辑（返回 409 "stale attestation" 而非 401）——所有端点（含
+`/v1/dek/unwrap`）完全没有鉴权。
+
+**为什么比"未实现"更危险**：运维传了 `--client-ca` 会以为已启用 mTLS，
+而流量实际是明文——**配置声明与实现不符且不报错**。这与本项目此前发现的
+多起静默失效同类（`effective_tier` 自我夸大、`check_role` 消息与行为相反）。
+
+### 同时修掉 Tongsuo 链接根因（TLS 底座）
+
+`jt-crypto-tongsuo/build.rs` 只发 `rustc-link-search`、**没设 `OPENSSL_DIR`**；
+`openssl-sys` 的 build script 先于本 crate 运行，会走自己的发现逻辑，在
+macOS 上命中 Homebrew。实测：`rustc-link-search=native=/opt/homebrew/opt/openssl@3/lib`、
+`version_number=30600030`（OpenSSL 3.6.3）。
+
+**后果隐蔽**：编译通过、KAT 也过（SM3/SM4-GCM 两边都有），但用的是
+**不含 NTLS/TLCP 与 SM2 TLS 的 OpenSSL**——TLCP 握手会到运行期才失败。
+docs/16 §4 早已记录该现象，本次定位到根因并修复：在**单一事实源
+`scripts/env.sh`** 里导出 `OPENSSL_DIR` + `OPENSSL_NO_VENDOR=1`。
+修后实测 `version_number=30500040`（Tongsuo 8.5.0）。
+
+### 设计要点
+
+1. **强制双向认证**：`set_verify(PEER | FAIL_IF_NO_PEER_CERT)`。两者缺一不可——
+   只设 `PEER` 时客户端**不提供**证书也会握手成功（OpenSSL 语义），
+   "要求 mTLS"会变成"可选 mTLS"。
+2. **两道独立的门**：Bearer 与 mTLS 都配则都要过（AND）；只配一道则只查一道。
+   token 用**常量时间比较**（防时序侧信道）。
+3. **配置不自洽即拒绝启动**（非静默降级）：半配置 TLS / 只给 client-ca 不给 TLS /
+   两道门都未配——全部 `Err` 退出。原则是**宁可起不来，不可静默明文**。
+4. **开发用无鉴权必须显式**：新增 `--insecure-no-auth`。jt-kms 暴露
+   `/v1/dek/unwrap`，"默认无鉴权"不可接受；传参使"我确实关掉了鉴权"成为
+   有意识的操作，而非默认行为（启动打 WARN）。
+5. **启动日志如实标注传输层**，防"以为启用了 mTLS"。
+6. **证书事实经 `Connected` 传递**，供中间件做纵深防御（防将来有人误改
+   acceptor 配置后应用层失去这道门）。
+
+### 实现期踩到的一处坑
+
+`Connected::connect_info` 里已确认 `present=true`，中间件却报 "no client cert"。
+根因：`into_make_service_with_connect_info` 把产物包在 **`ConnectInfo<T>` newtype**
+里插入扩展，中间件取裸类型永远拿到 `None`。
+
+### 验证（`scripts/test-kms-mtls.sh`，11 项，可证伪且成对）
+
+| 组 | 项 |
+|---|---|
+| A 配置自洽 | 无鉴权配置被拒 / 半配置 TLS 被拒 / 只给 client-ca 被拒 |
+| B 传输层 | 明文 HTTP 被拒 / 无客户端证书被拒 / **错误 CA 签发的证书被拒** |
+| C 应用层 | 有证书无 token→401 / 证书+正确 token→200 返回 DEK / 错误 token→401 |
+
+**三组缺一不可**：只测 C 的"通过"无法区分"鉴权生效"与"根本没鉴权"；
+只测拒绝无法区分"拒绝正确"与"服务起不来"。
+
+证书由**项目自带 Tongsuo** 生成（非系统 openssl，因合规主路径是 Tongsuo）；
+Tongsuo 安装树未带 `ssl/openssl.cnf`，脚本自带最小配置。
+
+### 遗留（不假装完成）
+
+1. **TLCP 双证书握手未做**：当前是标准 TLS 1.2+。TLCP（GB/T 38636-2020）需走
+   Tongsuo 的 NTLS 接口，而 `openssl` crate 未暴露该 API——属接入平面（批次 6）。
+2. **客户端证书只校验链可信，未校验 CN/SAN 与 `node_id` 的绑定**（docs/13 §2.1
+   的组件 ID 语义）——需与 jt-identity 的证书签发规则一并做。
+
 ## 5.9 事故记录：基础2 全链路 OOM（2026-09-21）
 
 **现象**：在基础2（2C/7.3G）上启动 WAL 加密端到端验证时，全链路组件
@@ -637,6 +717,11 @@ RSS 更大）超出可用内存。
     → 遗留：PL/Python 真实扩展未验；K6 数据面（FDW 写）与调试路径未做
 
 批次 4：I1+I2 身份引导（enrollment + CA + 三权引导凭据）
+    → **前置已做（§5.13）**：jt-kms 鉴权缺口修复（真 mTLS + Bearer；此前完全无鉴权）
+      —— 没有真 mTLS，attest 与 KMS 的链路认证都是空的，故先修它
+    → **同时修掉 Tongsuo 链接根因**（env.sh 导出 OPENSSL_DIR；此前误链 Homebrew
+      OpenSSL 3.6.3，不含 NTLS/TLCP 与 SM2 TLS，TLCP 会到运行期才失败）
+    → 剩余：jt-identity 组件本体（CA 层次 + enrollment 流程 + CRL/OCSP + 三权凭据）
     → **信任链的断点**：jt-attest 要验构建身份签名、jt-kms 要验 mTLS 客户端证书，
       但"证书由谁签、节点如何取得第一份凭据"没有答案（鸡生蛋）
     → 三权分离目前靠 jt_sec.role 这个 GUC 自设，不是凭据派生——与 ADR-012 原意有距离
