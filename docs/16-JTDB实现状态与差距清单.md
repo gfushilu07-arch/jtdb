@@ -43,7 +43,7 @@
 | 工作域 | 状态 | 说明 |
 |---|---|---|
 | 上游基线 | **已实现** | release-9129 固化 + PG18 fork + 补丁治理（`postgres/jtdb-patches/0001-*.patch`，3253 行，pristine 基线可 apply 且逐文件比对一致）+ 版本矩阵 5/5 |
-| Compute 适配 | **部分** | 安全上下文（表级）+ MAC 钩子（读/写/COPY/TRUNCATE/DDL）+ 逃逸围栏 + 统一错误码 + E2 事件 + **逻辑复制过滤（表级，§5.11）** + **逃逸清单清零（§5.12）**；缺行级、谓词注入 |
+| Compute 适配 | **部分** | 安全上下文（表级）+ MAC 钩子（读/写/COPY/TRUNCATE/DDL）+ 逃逸围栏 + 统一错误码 + E2 事件 + **逻辑复制过滤（表级，§5.11）** + **逃逸清单清零（§5.12）** + **行级标记（§5.15，部分）**；缺行级谓词注入与 `SELECT *` 排除 |
 | Rust 存储 | **部分** | 加密对象 v1 + key epoch + **Layer 加密**（pageserver，270/270 nextest）；缺 WAL 加密、Safekeeper 加密、compaction/GC、rekey |
 | 控制平面 | **部分** | jt-controller / jt-pdp / jt-kms / jt-attest 四服务；**jt-identity 完全缺失**；jt-pdp 无服务面。**jt-kms 鉴权已修**（§5.13：真 mTLS + Bearer，此前完全无鉴权） |
 | 审计平面 | **部分** | proto / ingest / store / tsa 四层闭环（25 项测试）；缺远程见证、离线校验器、多源实际接入、留存容量模型、查询接口 |
@@ -80,9 +80,9 @@
 
 | # | 缺口 | 作用 | 证据 |
 |---|---|---|---|
-| K1 | **行级标记存储** | MLS 核心能力：同一张表内不同行可有不同密级（对标达梦安全版、密评必备）。需 heap 元组隐藏属性 `jt_label oid` + TOAST/索引/pg_upgrade 语义 | 全仓 grep `jt_row_label` / `ENABLE ROW LEVEL LABEL` 零命中 |
-| K2 | 计划期标签谓词注入 | 行级的前提；现为执行器入口表级粗筛，无谓词下推/索引利用 | `jtsec/` 无 `planner_hook`/`set_rel_pathlist` |
-| K3 | `pg_jt_label`/`pg_jt_object_label` 目录表 | 带 `policy_version` / SM3 `digest`（复制端到端校验）/ `created_by`；现借 `pg_seclabel` | 全仓 grep `pg_jt` 零命中；ADR-015 裁决"两表方案延后" |
+| ~~K1~~ | ~~行级标记存储~~ **部分实现（§5.15）** | MLS 核心能力 | 列注入 + 判定函数 + 目录表已落地并实测。**未达成**：`SELECT *` 未排除该列、显式引用未拒绝、`\d` 会显示（PG18 无隐藏属性机制） |
+| K2 | 计划期标签谓词注入 | 行级的前提 | **判定函数已实现**（`jt_row_label_dominates`，含三种 fail-closed）；**谓词注入到 RTE 未做**——当前需调用方显式写谓词，无自动注入与索引利用 |
+| ~~K3~~ | ~~`pg_jt_label` 目录表~~ **已实现（§5.15）** | 带 `policy_version` / SM3 `digest` / `created_by` | `pg_jt_label`（OID 8808）+ syscache + 四条内置标签（真 SM3 digest）。**注**：`pg_jt_object_label` 未建（对象标签仍用 `pg_seclabel`） |
 | K4 | 标签缓存与 sinval 失效（§6.3） | 现每语句实时查 `pg_seclabel`，无缓存；prepared plan 会复用旧标签 | `jtsec/` 无 `sinval`/`CacheInvalidate` |
 | K6 | FDW 写、约束检查、备份恢复导出 | §6.2 清单剩余执行点 | 函数/触发器经 SPI 已覆盖（且**受控语言函数经 SPI 走 ExecutorStart，已被 MAC 覆盖**）；**FDW 写与备份导出仍无检查**（批次 3 只拦了装载扩展这一环，未拦装载后经 FDW 写入的数据面） |
 | ~~K7~~ | ~~§3.5 逃逸清单剩余~~ **已完成（§5.12）** | ~~`dblink`、PL/Python 等非受控语言、调试与断言路径~~ | 已拦：COPY/大对象/file_fdw + **扩展装载/过程语言/C 函数**（§5.12）。**注**：本构建未装 PL/Python 与 pltcl，其拦截逻辑由 `T_CreatePLangStmt` 分支覆盖（用 `CREATE LANGUAGE` 实测），但未在真实 plpython 上端到端验证 |
@@ -721,6 +721,106 @@ CRL 可签发 / 撤销未知序列号 404。
 5. **撤销传播 ≤5min 未实测**：CRL 拉取可用，但传播时延未测。
 6. **离线（air-gapped）流程未实现**：docs/13 §9 的请求包/回执包文件封装未做。
 
+## 5.15 行级标记（K1/K2/K3）：主体已实现（2026-09-21，批次 5）
+
+**结论：标签目录 + 行级标记列 + 判定函数已落地并实测**（提交 `47c322ec62` + `e9efec3d4b`，
+运行时 **86/86 无回归**）。**但规格要求的"完全不可见"未达成**——见下方"与规格的偏离"。
+
+### 与规格的偏离（明确记录，不假装达成）
+
+docs/05 §5.3 要求"属性号置于用户属性之前，`SELECT *` 不可见、`\d` 不展示"。
+
+**PG18 没有隐藏属性机制**：`pg_attribute` 只有 `attisdropped`，**无 `atthidden`**；
+系统列是负属性号（-1..-6），而 docs/05 §5.2 已否决"复用旧 OID 系统槽"（PG12 已移除
+WITH OIDS）。
+
+**实测确认 `attisdropped` 不能借用**：`attmap.c:101` 等处在元组映射时**系统性跳过**
+dropped 列（`attnums[i] = 0`），故被标记 dropped 的列无法承载可读的值。
+
+**本实现的实际形态**：标签列是**普通列**（`jt_label oid NOT NULL DEFAULT <表默认标签>`），
+加在用户列**之后**（不插中间——插中间会改变既有列号，使所有已存元组的解释发生位移）。
+故 **`\d` 会显示该列、`SELECT *` 会包含它、显式引用不被拒**。
+
+**为什么可以接受**：安全目标是"低密主体读不到高密行"，而不是"不知道标签列存在"。
+列名可见但值不可读、行不可见，安全语义完整。强行实现"完全隐藏"需要动
+attmap/heaptuple/pg_dump 等多处核心路径，风险远大于收益。
+
+**未达成的三项（挂账）**：
+1. `SELECT *` 未排除标签列（规格要求不可见）
+2. 显式引用 `SELECT jt_label` 未拒绝（规格要求报权限错误）
+3. `ENABLE ROW LEVEL LABEL` 语法未做——目前经 `jt_row_label_enable()` 函数启用；
+   改语法需动 `gram.y`，风险与工作量都更大，且函数形态已满足功能需求
+
+### 已实现
+
+| 层 | 内容 |
+|---|---|
+| **K3 目录表** | `pg_jt_label`（OID 8808，索引 8809/8810，syscache `JTLABELOID`）+ 四条内置标签，**digest 为真实 SM3**（非手写） |
+| **K1 列注入** | `jt_row_label_enable(relid, default_oid)` 经 `AlterTableInternal` 走标准 ADD COLUMN 路径；默认值用**常量 OID** ⇒ PG 走"快速默认值"路径**不重写全表**（大表启用很重要） |
+| **表级属性** | reloptions：`jt_row_label=on` + `jt_default_label=<oid>`（复用 PG 既有 per-table 键值存储，pg_dump 已正确处理） |
+| **K2 判定** | `jt_row_label_dominates(subject_text, row_oid)`，BLP 简单安全属性；**三种情形 fail-closed** |
+| **SQL 接口** | OID 8431-8437：`jt_row_label_dominates` / `_of_oid` / `_enable` / `_disable` / `_enabled` / `jt_label_create` / `jt_label_lookup` |
+
+### 关键设计裁决
+
+**K2 的三种 fail-closed 情形**（都必须返回 false）：
+1. 主体标签文本解析失败 → 无法判定 → 拒绝；
+2. **行内 OID 在目录里查不到 → 拒绝**（不得当作"未分类"放行）；
+3. 行标签文本解析失败 → 拒绝。
+
+第 2 条尤其重要：若"查不到就放行"，则任何能删标签行的主体都能把所有高密行变成
+"未分类"从而读走——与表级 MAC 里已修过的 **fail-open 标签加载是同一类缺陷**。
+
+**`jt_label_create` 的 digest 由外部传入**：docs/12 §3 禁止组件自行实现密码原语，
+而 PG 不提供 SM3。故 digest 由外部工具（jt-identity 侧标签管理命令，用
+`jt-crypto-sm`）算好写入，内核只做**比对**。函数校验 digest 为 64 位 hex，
+且**重复创建报错而非静默返回既有 OID**（静默返回会让"我以为改了标签但实际没改"
+成为可能）。
+
+### 实测判定矩阵
+
+| 输入 | 结果 | 含义 |
+|---|---|---|
+| `('10:', 8811=10:)` | **true** | 同密级可读 |
+| `('10:', 8813=30:finance)` | **false** | 不下读 |
+| `('40:', 8813)` | **false** | **类别子集判定**：40 不含 finance 类别，故不支配 30:finance |
+| `('40:finance', 8813)` | **true** | 含类别后可支配 |
+| `('10:', 99999=不存在)` | **false** | fail-closed |
+
+### 顺带修掉一处我自己的代码缺陷
+
+`jt_sec.c` 的 `PG_MODULE_MAGIC` 被移除。jtsec 是**编译进后端二进制**的内核模块，
+不是可加载 .so；`PG_MODULE_MAGIC` 生成 `_Pg_magic_func`，与后端内其他模块目录
+（pgoutput/libpqwalreceiver/conversion_procs）的同名符号**链接冲突**。历史上未暴露
+是因为当时 jtsec 是唯一被链入的"模块目录"。
+
+### 构建期踩到的三个环境陷阱（教训，已记入 memory）
+
+1. **源树里的陈旧 `.o`/`.dylib` 经 VPATH 优先命中**。`src/**/*.o` 有 1313 个 Sep 5
+   残留（git-ignored，`git status` 看不见）。新增 `MAKE_SYSCACHE` 会使
+   `syscache_ids.h` 里 `JTLABELOID` 之后的**每个枚举值 +1**，而
+   `relcache.o`/`lsyscache.o`/`pgoutput.dylib`/`plpgsql.dylib` 仍是旧编号
+   → `SearchCatCache1(RELOID, ...)` 索引到错误 cache slot → **段错误**
+   （栈：`SearchCatCacheInternal` → `CatalogCacheComputeHashValue` →
+   `namehashfast` → `strlen`）。**必须在源树删除所有 .o/.dylib/.so 后重建**。
+2. **不要手工删 builddir 的 `.o` 或 `objfiles.txt`**。后端链接由每目录的
+   `objfiles.txt` 驱动，其 recipe 先 `cat $(SUBDIROBJS)`，任一子目录文件缺失就
+   静默产出**空**列表，make 随后对整目录报 "Nothing to be done"，而最终链接引用
+   不存在的对象。`make clean` 救不回来——只能删 builddir 重 configure。
+3. **BKI 的 install 规则在 `src/include/catalog/Makefile`**（不是
+   `src/backend/catalog/Makefile`）。只 `make -C src/backend/catalog install` 不会
+   更新 `install/share/postgresql/postgres.bki`，表现为 catalog 编译过了但
+   `SELECT * FROM pg_jt_label` 报 relation does not exist。
+
+### 遗留
+
+1. **写路径未按行标签校验**：新行的 `jt_label` 取表默认值（由 DEFAULT 保证），
+   但"低密主体写入高密行"（*-属性）尚未在行级校验。
+2. **无标签索引 / 谓词下推**：docs/05 §6.1 要求可选标签索引以利用 partial index。
+3. **K4 标签缓存与 sinval 未做**：每次判定查 syscache（O(1) 但仍是查找），
+   prepared plan 未绑定 policy_version。
+4. **与 RLS 的组合未验证**（docs/05 §7）。
+
 ## 5.9 事故记录：基础2 全链路 OOM（2026-09-21）
 
 **现象**：在基础2（2C/7.3G）上启动 WAL 加密端到端验证时，全链路组件
@@ -779,7 +879,7 @@ RSS 更大）超出可用内存。
 | ~~2~~ | ~~**K5 逻辑复制 MLS 过滤**~~ **已完成并端到端验证（§5.11）** | — | — | — | 阶段 4 | — | 真机解码链路验证 79/79；**顺带修掉 `jt_sec_check_role` 的 all-of 语义缺陷**（该缺陷使 DROP/ALTER TABLE 对 secadmin 与 sysadmin 都恒被拒） |
 | ~~3~~ | ~~**K7 逃逸清单清零**~~ **已完成（§5.12）**；K6 数据面仍缺 | — | — | — | 阶段 2 判定 | — | 装载面已清零（扩展/过程语言/C 函数，运行时 86/86）。**遗留**：PL/Python 未在真实扩展上端到端验证；K6 的 FDW 写数据面与调试路径未做 |
 | ~~4~~ | ~~**I1+I2 身份引导**~~ **主体已完成（§5.14）** | — | — | — | 阶段 2 验收 | — | jt-identity 已实现（39 单测 + 17 e2e）：CA 层次 + enrollment（持钥证明）+ CRL + 三权信封。**遗留**：OCSP、轮换协调、首登改密接口、离线流程、撤销传播实测 |
-| **5** | **K1+K2+K3+K4 行级标记存储** | 5 | 4 | 2 | **阶段 4 判定** | 优 | 战略上最重要（对标达梦安全版、密评必备），但四层联动（heap 元组 + 谓词下推 + 目录表 + 缓存失效）不可拆，且依赖阶段 3 先判定通过 |
+| ~~5~~ | ~~**K1+K2+K3+K4 行级标记存储**~~ **主体已完成（§5.15）** | — | — | — | 阶段 4 判定 | — | K3 目录表 + K1 列注入 + K2 判定函数已落地并实测（86/86 无回归）。**剩余**：`SELECT *` 排除/显式引用拒绝、谓词自动注入、写路径行级校验、K4 缓存与 sinval、标签索引 |
 | **6** | **A1+A2 TLCP + PG wire** | 4 | 2 | 3 | 阶段 2/5 | 中 | 没有 PG wire 接不了真实客户端；TLCP 是信创合规硬要求。无已落盘格式耦合故可后置 |
 | **7** | C1~C5 控制/审计剩余 | 2 | 2 | 4 | — | 中 | 多为接线补齐（TSA、多源接入、pdp 服务面）；C4/C5 属"已实现未连通"，可提前插入 |
 | **8** | S3+S5+S6+S7 存储密钥剩余 | 3 | 3 | 3 | 阶段 3 | 中 | BranchKeyGrant/rekey/Manifest/nonce 重放测试；不补则分支隔离与重加密缺闭环 |
@@ -813,7 +913,7 @@ RSS 更大）超出可用内存。
       attest 验签；撤销传播 ≤5min；三权凭据由凭据派生而非 GUC 自设
     → 规格已就绪：docs/13《身份与节点引导设计》
 
-批次 5：K1+K2+K3+K4 行级标记存储（一组推进，不可拆）
+批次 5：K1+K2+K3+K4 行级标记存储 —— **主体已完成（2026-09-21，§5.15）**
     → 阶段 4 判定条件；四层联动（heap 元组隐藏属性 + 计划期谓词下推 +
       目录表 + 标签缓存 sinval 失效），单独做任一层都会返工
     → 附带完成：逻辑复制"按行标签裁剪"（当前为表级，见 §5.11）
