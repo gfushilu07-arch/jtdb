@@ -32,6 +32,7 @@
 #   §11 统一错误码 JT001-JT004（docs/05 §6.2）
 #   §12 E2 审计事件（docs/02 §7.2）
 #   §13 逻辑复制与 CDC 的 MLS 过滤（docs/02 §3.6）
+#   §14 逃逸清单剩余项（扩展/过程语言/C 函数；docs/02 §3.5）
 #
 # 用法: source scripts/env.sh && bash scripts/test-jtsec-runtime.sh
 set -u
@@ -196,7 +197,11 @@ expect_err "lo_import 被禁用（服务端文件读）" "$ADMIN" \
   "SELECT lo_import('/tmp/jtsec-copy-src.txt');" "JT004|disabled"
 expect_err "lo_export 被禁用（服务端文件写）" "$ADMIN" \
   "SELECT lo_export(0, '/tmp/jtsec-lo-out.txt');" "JT004|disabled"
-as "$ADMIN" "CREATE EXTENSION IF NOT EXISTS file_fdw;" >/dev/null 2>&1
+# 装载 file_fdw 本身现在受逃逸围栏管（§14 的 CREATE EXTENSION 分支），
+# 故**先开白名单装载扩展**，再关掉白名单测"选项被拦"——否则扩展装不上，
+# 下面的断言会因 "server does not exist" 而假失败（实测踩到）。
+as "$ADMIN" "SET jt_sec.role='secadmin'; SET jt_sec.allow_escape_paths=on; CREATE EXTENSION IF NOT EXISTS file_fdw;" >/dev/null 2>&1
+as "$ADMIN" "SET jt_sec.allow_escape_paths=off;" >/dev/null 2>&1
 as "$ADMIN" "CREATE SERVER IF NOT EXISTS ffs_esc FOREIGN DATA WRAPPER file_fdw;" >/dev/null 2>&1
 expect_err "file_fdw filename 选项被禁用" "$ADMIN" \
   "CREATE FOREIGN TABLE ft_esc(f text) SERVER ffs_esc OPTIONS (filename '/tmp/jtsec-copy-src.txt', format 'text');" "JT004|disabled"
@@ -443,6 +448,59 @@ fi
 # 清理：槽会持续持有 WAL，不删会拖住后续测试
 as "$ADMIN" "SELECT pg_drop_replication_slot('jt_lr_slot') FROM pg_replication_slots WHERE slot_name='jt_lr_slot';" >/dev/null 2>&1
 as "$ADMIN" "SET jt_sec.role='secadmin'; DROP PUBLICATION IF EXISTS p_lr;" >/dev/null 2>&1
+
+
+# ---------------------------------------------------------------------------
+say "=== 14. 逃逸清单剩余项（docs/02 §3.5）==="
+# docs/02 §3.5 原文列举的逃逸路径中，已拦：COPY PROGRAM、COPY 文件形式、
+# 大对象服务端读写、file_fdw 的 filename/program 选项（§10/§10b）。
+# 本段覆盖**其余四项**，它们的共同性质是：不"读表"，故 ExecutorStart 的
+# MAC 检查完全管不到，而一旦装载即可绕过内核把数据搬出去或执行任意代码。
+#
+# **为什么必须放在逃逸围栏（而非 MAC 块）内**：这些能力拦的是"绕过内核直接
+# 接触外部系统/执行代码"，与标签检查是否启用无关——MAC 处于阶段 0 兼容模式
+# （off）时同样危险。与 COPY PROGRAM 的判据一致。
+#
+# 实测过的真实风险（本段写之前先探测）：
+#   - 围栏开启 + MAC 开启下，superuser 仍能 `CREATE EXTENSION dblink`，
+#     随后高密会话（40:）能成功 `dblink_connect` 到**外部**数据库（返回 OK）。
+#     这是与逻辑复制同类的数据出口，且目标完全不受本实例管控。
+#   - 围栏开启下 superuser 仍能 `CREATE LANGUAGE`（任意服务端代码执行）。
+
+# 14.1 扩展装载（dblink/postgres_fdw 是数据出口；file_fdw 读服务器文件）
+expect_err "默认禁用 CREATE EXTENSION（dblink 是数据出口）" "$ADMIN" \
+  "SET jt_sec.allow_escape_paths=off; CREATE EXTENSION IF NOT EXISTS dblink" \
+  "CREATE EXTENSION .* is disabled"
+
+# 14.2 非受控过程语言（服务端任意代码执行）
+expect_err "默认禁用 CREATE LANGUAGE" "$ADMIN" \
+  "SET jt_sec.allow_escape_paths=off; CREATE LANGUAGE jt_t14_lang HANDLER plpgsql_call_handler" \
+  "CREATE LANGUAGE .* is disabled"
+
+# 14.3 C 语言函数（装载任意 .so，等效任意代码执行）
+expect_err "默认禁用 CREATE FUNCTION ... LANGUAGE C" "$ADMIN" \
+  "SET jt_sec.allow_escape_paths=off; CREATE FUNCTION jt_t14_cfn() RETURNS int AS 'libc.dylib' LANGUAGE C" \
+  "LANGUAGE C is disabled"
+
+# 14.4 受控语言不得误拦（sql/plpgsql 经 SPI 走 ExecutorStart，已被 MAC 覆盖）
+#      这一条很重要：围栏若把 sql 函数也拦了，业务会被无谓打断。
+expect_ok "受控语言 sql 函数不被误拦" "$ADMIN" \
+  "SET jt_sec.allow_escape_paths=off; CREATE OR REPLACE FUNCTION jt_t14_sqlfn() RETURNS int AS 'SELECT 1' LANGUAGE sql"
+expect_ok "受控语言 plpgsql 函数不被误拦" "$ADMIN" \
+  "SET jt_sec.allow_escape_paths=off; CREATE OR REPLACE FUNCTION jt_t14_plfn() RETURNS int AS 'BEGIN RETURN 1; END' LANGUAGE plpgsql"
+
+# 14.5 白名单可放行（secadmin 开启后 dblink 可装）
+#      必须验证"放行"这一侧，否则无法区分"围栏生效"与"扩展本来装不上"。
+expect_ok "白名单开启后 dblink 可装载" "$ADMIN" \
+  "SET jt_sec.role='secadmin'; SET jt_sec.allow_escape_paths=on; CREATE EXTENSION IF NOT EXISTS dblink"
+
+# 14.6 普通用户不得自行开白名单（权限提升防护，与 §10 呼应）
+expect_err "普通用户不得开启逃逸白名单（扩展侧）" low_u \
+  "SET jt_sec.allow_escape_paths=on" "ERROR|FATAL|permission"
+
+# 14.7 收尾：关掉白名单并卸掉扩展，避免影响后续/重跑
+as "$ADMIN" "SET jt_sec.role='secadmin'; SET jt_sec.allow_escape_paths=on; DROP EXTENSION IF EXISTS dblink;" >/dev/null 2>&1
+as "$ADMIN" "SET jt_sec.allow_escape_paths=off; DROP FUNCTION IF EXISTS jt_t14_sqlfn(); DROP FUNCTION IF EXISTS jt_t14_plfn();" >/dev/null 2>&1
 
 # ---------------------------------------------------------------------------
 say "=== 结果 ==="

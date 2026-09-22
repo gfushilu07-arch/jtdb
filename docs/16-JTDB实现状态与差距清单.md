@@ -43,7 +43,7 @@
 | 工作域 | 状态 | 说明 |
 |---|---|---|
 | 上游基线 | **已实现** | release-9129 固化 + PG18 fork + 补丁治理（`postgres/jtdb-patches/0001-*.patch`，3253 行，pristine 基线可 apply 且逐文件比对一致）+ 版本矩阵 5/5 |
-| Compute 适配 | **部分** | 安全上下文（表级）+ MAC 钩子（读/写/COPY/TRUNCATE/DDL）+ 逃逸围栏 + 统一错误码 + E2 事件 + **逻辑复制过滤（表级，§5.11）**；缺行级、谓词注入、函数触发器（经 SPI 已覆盖） |
+| Compute 适配 | **部分** | 安全上下文（表级）+ MAC 钩子（读/写/COPY/TRUNCATE/DDL）+ 逃逸围栏 + 统一错误码 + E2 事件 + **逻辑复制过滤（表级，§5.11）** + **逃逸清单清零（§5.12）**；缺行级、谓词注入 |
 | Rust 存储 | **部分** | 加密对象 v1 + key epoch + **Layer 加密**（pageserver，270/270 nextest）；缺 WAL 加密、Safekeeper 加密、compaction/GC、rekey |
 | 控制平面 | **部分** | jt-controller / jt-pdp / jt-kms / jt-attest 四服务（共 86 项测试）；**jt-identity 完全缺失**；jt-pdp 无服务面 |
 | 审计平面 | **部分** | proto / ingest / store / tsa 四层闭环（25 项测试）；缺远程见证、离线校验器、多源实际接入、留存容量模型、查询接口 |
@@ -84,8 +84,8 @@
 | K2 | 计划期标签谓词注入 | 行级的前提；现为执行器入口表级粗筛，无谓词下推/索引利用 | `jtsec/` 无 `planner_hook`/`set_rel_pathlist` |
 | K3 | `pg_jt_label`/`pg_jt_object_label` 目录表 | 带 `policy_version` / SM3 `digest`（复制端到端校验）/ `created_by`；现借 `pg_seclabel` | 全仓 grep `pg_jt` 零命中；ADR-015 裁决"两表方案延后" |
 | K4 | 标签缓存与 sinval 失效（§6.3） | 现每语句实时查 `pg_seclabel`，无缓存；prepared plan 会复用旧标签 | `jtsec/` 无 `sinval`/`CacheInvalidate` |
-| K6 | 函数/触发器内写、FDW 写、约束检查、备份恢复导出 | §6.2 清单剩余执行点 | 函数/触发器经 SPI 已覆盖；FDW 写与备份导出无检查 |
-| K7 | §3.5 逃逸清单剩余 | `dblink`、PL/Python 等非受控语言、调试与断言路径 | 已拦：COPY/大对象/file_fdw；其余未拦 |
+| K6 | FDW 写、约束检查、备份恢复导出 | §6.2 清单剩余执行点 | 函数/触发器经 SPI 已覆盖（且**受控语言函数经 SPI 走 ExecutorStart，已被 MAC 覆盖**）；**FDW 写与备份导出仍无检查**（批次 3 只拦了装载扩展这一环，未拦装载后经 FDW 写入的数据面） |
+| ~~K7~~ | ~~§3.5 逃逸清单剩余~~ **已完成（§5.12）** | ~~`dblink`、PL/Python 等非受控语言、调试与断言路径~~ | 已拦：COPY/大对象/file_fdw + **扩展装载/过程语言/C 函数**（§5.12）。**注**：本构建未装 PL/Python 与 pltcl，其拦截逻辑由 `T_CreatePLangStmt` 分支覆盖（用 `CREATE LANGUAGE` 实测），但未在真实 plpython 上端到端验证 |
 | K8 | §3.3 默认与继承 | CREATE TABLE 继承 schema/库默认标签；`jt_relabel_table()` 受控重标 | 无继承链、无重标工具 |
 | K9 | §7 与 RLS 组合 | 标签检查与行级安全策略的 AND 语义、注册顺序 | `jtsec/` 无 `rowsecurity` |
 | K10 | §3.4 达梦语义兼容 | 等级/范围/组三元组映射、按表 `ENABLE_MAC`、`jt_migrate_from_dameng` | 无 |
@@ -499,6 +499,66 @@ max_level 提到 40"顺带把所有领域都放出去，是权限的隐式放大
 **测试脚本注意**：默认 `max_replication_slots=10`，每次解码建一个槽，跑几轮即
 耗尽（报 "all replication slots are in use"）且槽会钉住 WAL——解码后须 drop。
 
+## 5.12 K7 逃逸清单剩余项：已清零（2026-09-21，批次 3）
+
+**结论：docs/02 §3.5 逃逸清单的"装载面"已全部封堵**（子模块提交 `a73e91547f`，
+运行时 **86 PASS / 0 FAIL**）。
+
+### 本批覆盖的四项（此前零覆盖）
+
+docs/02 §3.5 原文列举：`COPY PROGRAM`、`file_fdw`/`pg_read_server_files`/
+`pg_write_server_files`、`dblink`、PL/Python 等非受控服务端语言、大对象服务端
+任意读写、调试与断言路径。**此前已拦**：COPY PROGRAM、COPY 文件形式、大对象、
+file_fdw 的 filename/program 选项（§10/§10b）。**本批补齐**：
+
+| NodeTag | 拦的理由 |
+|---|---|
+| `T_CreateExtensionStmt` | dblink/postgres_fdw 开数据出口；file_fdw 读服务器文件 |
+| `T_CreatePLangStmt` | 非受控过程语言 = 服务端任意代码执行 |
+| `T_CreateFunctionStmt`（仅 `LANGUAGE c`） | C 函数装载任意 .so = 任意代码执行 |
+
+共同性质：**"不读表"**，故 `ExecutorStart` 的 MAC 检查完全管不到；一旦装载
+即可绕过内核把数据搬出去或执行任意代码。
+
+### 先探测再实现（实测到的真实风险）
+
+- 围栏开启 + MAC 开启下，superuser 仍能 `CREATE EXTENSION dblink`，随后高密
+  会话（40:）能成功 `dblink_connect` 到**外部**数据库（返回 OK）。
+- **注意区分**：dblink 连**同实例**时新连接会重新走一遍 MAC（实测低密会话经
+  dblink 读高密表仍被拒 `JT001`），真正的风险在连到**实例之外**——那是完全
+  不受本实例管控的数据出口，与逻辑复制同类。
+- 围栏开启下 superuser 仍能 `CREATE LANGUAGE`（服务端任意代码执行）。
+- 本仓 jtsec 对这些路径**零覆盖**（grep 命中 0）。
+
+### 设计要点
+
+- **放在逃逸围栏而非 MAC 块**：拦的是"绕过内核直接接触外部系统/执行代码"，
+  与标签检查是否启用无关——MAC 处于阶段 0 兼容模式（off）时同样危险。
+  与 COPY PROGRAM 的判据一致。
+- **`LANGUAGE sql/plpgsql` 刻意不拦**：受控语言经 SPI 走 `ExecutorStart`，
+  已被 MAC 覆盖；拦了会无谓打断业务。测试专门固化这一侧，防将来误扩大拦截面。
+- **默认拒绝、secadmin 白名单放行**：复用既有 `jt_sec.allow_escape_paths`。
+- **`initdb` 兼容性**：`initdb` 自身执行 `CREATE EXTENSION plpgsql`
+  （`initdb.c:1997`），会被新分支拦下；既有围栏的 `!IsUnderPostmaster` 豁免
+  覆盖它。**已实测**：加围栏后 `initdb` 仍 rc=0 且无拒绝日志。
+
+### 测试（§14，7 项）
+
+默认拒绝 3 项（扩展/语言/C 函数）+ **受控语言不被误拦 2 项** + **白名单可放行
+1 项**（必须验证这一侧，否则无法区分"围栏生效"与"扩展本来装不上"）+
+普通用户不得开白名单 1 项。
+
+### 明确遗留（不假装完成）
+
+1. **PL/Python 与 pltcl 未在真实扩展上端到端验证**：本构建未装它们，拦截逻辑
+   由 `T_CreatePLangStmt` 分支覆盖（用 `CREATE LANGUAGE` 实测通过），但未验证
+   "真实 plpython 语言装载被拒"。
+2. **K6 的数据面仍未拦**：本批拦的是"装载扩展"这一环，未拦"装载后经 FDW 写入"
+   的数据面（FDW 写路径的 MAC 检查）。
+3. **调试与断言路径未处理**：`debug_print_plan`/`debug_print_parse` 等属
+   `PGC_USERSET`，理论上可让低密主体把高密查询的计划（含常量值）打印到日志。
+   本轮未改——需先判定"计划文本是否算敏感数据"这一**规格问题**，不宜拍脑袋。
+
 ## 5.9 事故记录：基础2 全链路 OOM（2026-09-21）
 
 **现象**：在基础2（2C/7.3G）上启动 WAL 加密端到端验证时，全链路组件
@@ -555,7 +615,7 @@ RSS 更大）超出可用内存。
 |---|---|---|---|---|---|---|---|
 | ~~1~~ | ~~**S1 WAL 加密**~~ **已完成并真机验证（§5.2.2）** | — | — | — | 阶段 3 | — | 真机 41/41（真实 SafeKeeper 全生命周期 + 重启续写）；集成面 6 点全部落地 |
 | ~~2~~ | ~~**K5 逻辑复制 MLS 过滤**~~ **已完成并端到端验证（§5.11）** | — | — | — | 阶段 4 | — | 真机解码链路验证 79/79；**顺带修掉 `jt_sec_check_role` 的 all-of 语义缺陷**（该缺陷使 DROP/ALTER TABLE 对 secadmin 与 sysadmin 都恒被拒） |
-| **3** | **K7 逃逸清单清零 + K6 剩余执行点** | 5 | 1 | 3 | **阶段 2 判定** | **最优** | **唯一卡着阶段 2 验收的项**：判定条件逐字写着"逃逸路径清单清零"，不清零阶段 2 不能判通过，而阶段 2 是后续所有阶段的前置。单项工作量小（dblink / PL-Python / 调试路径 / FDW 写 / 备份导出），且已有 `jt_sec_check_escape_path()` 统一门可复用 |
+| ~~3~~ | ~~**K7 逃逸清单清零**~~ **已完成（§5.12）**；K6 数据面仍缺 | — | — | — | 阶段 2 判定 | — | 装载面已清零（扩展/过程语言/C 函数，运行时 86/86）。**遗留**：PL/Python 未在真实扩展上端到端验证；K6 的 FDW 写数据面与调试路径未做 |
 | **4** | **I1+I2 身份引导** | 5 | 3 | 3 | 阶段 2 验收 | 优 | **信任链断点**：attest 要验构建身份签名、KMS 要验 mTLS 证书，但签发方不存在（鸡生蛋）；三权分离靠 GUC 自设而非凭据派生，与 ADR-012 原意有距离。工作量最大但不可绕过 |
 | **5** | **K1+K2+K3+K4 行级标记存储** | 5 | 4 | 2 | **阶段 4 判定** | 优 | 战略上最重要（对标达梦安全版、密评必备），但四层联动（heap 元组 + 谓词下推 + 目录表 + 缓存失效）不可拆，且依赖阶段 3 先判定通过 |
 | **6** | **A1+A2 TLCP + PG wire** | 4 | 2 | 3 | 阶段 2/5 | 中 | 没有 PG wire 接不了真实客户端；TLCP 是信创合规硬要求。无已落盘格式耦合故可后置 |
@@ -571,19 +631,10 @@ RSS 更大）超出可用内存。
 下表是当前有效的执行顺序；每批次的交付物与验收判据一并列出，避免"做完才知道要什么"。
 
 ```text
-批次 3（下一批）：K7 逃逸清单清零 + K6 剩余执行点
-    → 唯一"单项工作量小、但卡着阶段 2 验收"的一组
-    → 阶段 2 判定条件明写"逃逸路径清单清零"，未清零则该阶段不能判通过
-    → 范围（docs/02 §3.5 原文）：
-        · dblink（跨库/跨实例连接，可绕过内核把数据搬运出去）
-        · PL/Python 等非受控服务端语言（可执行任意代码，绕过全部 MAC）
-        · 调试与断言路径
-        · K6：FDW 写、备份恢复导出
-    → 验收判据：每条逃逸路径"默认拒绝 + secadmin 白名单可开"，
-      且**测试必须证明拒绝确实发生**（不能只证明"未报错"）
-    → 实测基础（本轮已核实）：jtsec 目录对 dblink/plpython 零覆盖；
-      本机构建未装 dblink/PL 扩展，故需先确认测试环境可装载它们
-      （contrib 源码在 vendor 树内：contrib/dblink、contrib/hstore_plpython 等）
+批次 3：K7 逃逸清单清零 —— **已完成（2026-09-21，§5.12）**
+    → 装载面已清零：CREATE EXTENSION / CREATE LANGUAGE / CREATE FUNCTION LANGUAGE C
+    → 运行时 86/86；initdb 兼容性已实测
+    → 遗留：PL/Python 真实扩展未验；K6 数据面（FDW 写）与调试路径未做
 
 批次 4：I1+I2 身份引导（enrollment + CA + 三权引导凭据）
     → **信任链的断点**：jt-attest 要验构建身份签名、jt-kms 要验 mTLS 客户端证书，
