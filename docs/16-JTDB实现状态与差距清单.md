@@ -43,7 +43,7 @@
 | 工作域 | 状态 | 说明 |
 |---|---|---|
 | 上游基线 | **已实现** | release-9129 固化 + PG18 fork + 补丁治理（`postgres/jtdb-patches/0001-*.patch`，3253 行，pristine 基线可 apply 且逐文件比对一致）+ 版本矩阵 5/5 |
-| Compute 适配 | **部分** | 安全上下文（表级）+ MAC 钩子（读/写/COPY/TRUNCATE/DDL）+ 逃逸围栏 + 统一错误码 + E2 事件；缺行级、谓词注入、逻辑复制过滤、函数触发器（经 SPI 已覆盖） |
+| Compute 适配 | **部分** | 安全上下文（表级）+ MAC 钩子（读/写/COPY/TRUNCATE/DDL）+ 逃逸围栏 + 统一错误码 + E2 事件 + **逻辑复制过滤（表级，§5.11）**；缺行级、谓词注入、函数触发器（经 SPI 已覆盖） |
 | Rust 存储 | **部分** | 加密对象 v1 + key epoch + **Layer 加密**（pageserver，270/270 nextest）；缺 WAL 加密、Safekeeper 加密、compaction/GC、rekey |
 | 控制平面 | **部分** | jt-controller / jt-pdp / jt-kms / jt-attest 四服务（共 86 项测试）；**jt-identity 完全缺失**；jt-pdp 无服务面 |
 | 审计平面 | **部分** | proto / ingest / store / tsa 四层闭环（25 项测试）；缺远程见证、离线校验器、多源实际接入、留存容量模型、查询接口 |
@@ -84,7 +84,6 @@
 | K2 | 计划期标签谓词注入 | 行级的前提；现为执行器入口表级粗筛，无谓词下推/索引利用 | `jtsec/` 无 `planner_hook`/`set_rel_pathlist` |
 | K3 | `pg_jt_label`/`pg_jt_object_label` 目录表 | 带 `policy_version` / SM3 `digest`（复制端到端校验）/ `created_by`；现借 `pg_seclabel` | 全仓 grep `pg_jt` 零命中；ADR-015 裁决"两表方案延后" |
 | K4 | 标签缓存与 sinval 失效（§6.3） | 现每语句实时查 `pg_seclabel`，无缓存；prepared plan 会复用旧标签 | `jtsec/` 无 `sinval`/`CacheInvalidate` |
-| K5 | **逻辑复制与 CDC 的 MLS 过滤**（§3.6） | **未设防数据出口**：逻辑复制可把高密行原样发到低密订阅端，绕过全部 MAC | `jtsec/` 无 `logical`/`pgoutput`/`publication` |
 | K6 | 函数/触发器内写、FDW 写、约束检查、备份恢复导出 | §6.2 清单剩余执行点 | 函数/触发器经 SPI 已覆盖；FDW 写与备份导出无检查 |
 | K7 | §3.5 逃逸清单剩余 | `dblink`、PL/Python 等非受控语言、调试与断言路径 | 已拦：COPY/大对象/file_fdw；其余未拦 |
 | K8 | §3.3 默认与继承 | CREATE TABLE 继承 schema/库默认标签；`jt_relabel_table()` 受控重标 | 无继承链、无重标工具 |
@@ -397,6 +396,84 @@ PG v3 补丁 page LSN 明文；唯一加密页头的 pg_tde 代价是 `pg_receiv
   **归档路径可用**；活段路径待上述"续写恢复位置"完成（单点，方向明确）；
 - 相关改动已回退，基线干净（libs 15/15、safekeeper 33/33）。
 
+## 5.11 K5 逻辑复制 MLS 过滤：已实现（2026-09-21）
+
+**结论：主出口已封堵**（子模块提交 `51dfede`，运行时 **72 PASS / 0 FAIL / 1 诚实 SKIP**）。
+
+### 为什么这是优先项
+
+逻辑解码是**独立的数据出口**：它不"读表"而是读 WAL，故 `ExecutorStart` /
+`ProcessUtility` 的全部 MAC 检查都管不到它。不加过滤则高密表的数据被原样发到
+任意订阅端，绕过整套 MAC——这是已实现 MAC 的**唯一已知后门**。
+
+### 过滤点选在 `ReorderBufferProcessTXN`（而非 pgoutput）
+
+| 事实 | 影响 |
+|---|---|
+| `pgoutput` 是**共享库**（Makefile 用 `all-shared-lib`） | 只能调用后端导出符号，不能调 jtsec 内部函数 |
+| `reorderbuffer.c` **在后端二进制内**（`logical/Makefile` 的 `reorderbuffer.o`） | 可直接调 jtsec 内部函数 |
+| `ReorderBufferProcessTXN` 是**唯一收口点** | 所有带数据的变更（`apply_change`/`stream_change`、`apply_truncate`/`stream_truncate`）都经它分派 |
+| **跳过是协议安全的** | pgoutput 本身多处静默 return；BEGIN/COMMIT **惰性**发出（只在首个存活变更时发），故整事务被跳过后对端收到"空事务"，与"本来就是空事务"不可区分 |
+
+**为什么不报错而是静默跳过**：报错会（a）向订阅端泄漏"存在更高密级数据"这一
+事实（存在性侧信道）；（b）中断整条复制流，使低密数据也停止同步——过度拒绝
+变成拒绝服务。
+
+### 语义：BLP 读方向 + 等级与类别**正交**
+
+用读方向（订阅端=主体，被复制对象=客体）：逻辑复制是数据**出口**，风险是
+"低密对端收到高密数据"，正是简单安全属性（不下读）约束的那件事。用 *-属性
+会得到相反且错误的结论。
+
+两条判据都必须满足：`level <= jt_sec.replication_max_level` **且** 对象类别位
+全部落在 `jt_sec.replication_max_categories` 内。**类别必须单独授权**：类别
+表达"需额外授权的领域"（finance/hr），与等级正交——只按等级放行会让"把
+max_level 提到 40"顺带把所有领域都放出去，是权限的隐式放大。
+
+默认 `max_level = JT_LEVEL_PUBLIC`（10）+ 类别空集 ⇒ 只放行"公开且无类别"对象。
+
+> **默认值必须是真实等级（10）而非 0**：等级取值从 `JT_LEVEL_PUBLIC` 起，
+> `max=0` 会让所有合法标签都 `level > 0` 而恒被拒——连公开表都出不去，
+> "默认只放行公开"反而变成"默认全拒"。**实测踩到**。
+
+### 覆盖范围（docs/02 §3.6 四条）
+
+| 条款 | 状态 |
+|---|---|
+| 变更集外发（行数据 + TRUNCATE relids） | **已实现**（reorderbuffer 主过滤点） |
+| publication 创建/变更标签检查 | **已实现**（`T_CreatePublicationStmt`/`T_AlterPublicationStmt` 需 secadmin 或 sysadmin） |
+| slot 操作进审计 | **已实现**（physical/logical 创建与 drop 发 E2 事件 `event:"replication_slot"`；槽是出口的**持久句柄**，建后即使 publication 被删仍可被推进读取，故必须留痕） |
+| 按**行**标签裁剪 | **未做**——依赖行级标签（K1，批次 5 未实现），本批为**表级**粒度 |
+
+### 顺带修一处真实缺陷：`jt_sec_check_role` 的 all-of 语义
+
+原实现 `(roles & required) == required` 要求**同时持有全部**指定角色；而调用点
+写 `check_role(JT_ROLE_SECADMIN | JT_ROLE_SYSADMIN)` 意图是"**或**"，且
+`jt_sec.role` 是单值 GUC（后设覆盖先设）⇒ 任何会话都不可能同时持两角色 ⇒
+该检查**恒为假** ⇒ **DROP TABLE / ALTER TABLE 对 secadmin 与 sysadmin 都被拒**，
+而错误消息还写着 "requires secadmin or sysadmin"（**消息与行为相反**，正是
+难察觉的原因）。修正为 any-of：`(roles & required) != 0`——安全性上是放宽，
+但只放宽到调用点本来声明的语义（按 ADR-012，sysadmin 本就应能执行 DDL）。
+
+### 可验证性设计
+
+新增 SQL 接口 `jt_sec_replication_may_emit(text)` / `jt_sec_replication_skipped()`
+（OID 8429/8430）。**为什么必须暴露判定**：完整解码链路在某些构建上跑不通
+（见下），若只能端到端验证，则"判定是否正确"永远无法独立确认。有了它，判定
+矩阵可在任何构建上验证，运维也可用它审计"某张表会不会被复制出去"。
+
+### 遗留：解码链路端到端在本构建不可验（如实记录）
+
+`pg_logical_slot_get_binary_changes` 报 `resource manager with ID 134 not
+registered`——Neon fork 的 `RM_NEON` 未注册（`heapam.c` 里
+`XLogInsert(RM_NEON_ID, ...)`），而 macOS 侧没有可加载的 `neon.so`（只有
+aarch64 交叉产物）。**该阻塞与过滤逻辑无关**，故标注为 SKIP 而非 PASS。
+
+**接线已用目标码验证**（不依赖解码可运行）：`llvm-nm` 显示 `reorderbuffer.o`
+对 `jt_sec_emit_replication_denied` / `jt_sec_get_table_label` /
+`jt_sec_replication_may_emit` 有未定义引用，且在链接后的 postgres 二进制中
+全部解析——即过滤确实在解码路径上。要在有 `neon.so` 的构建上补端到端验证。
+
 ## 5.9 事故记录：基础2 全链路 OOM（2026-09-21）
 
 **现象**：在基础2（2C/7.3G）上启动 WAL 加密端到端验证时，全链路组件
@@ -452,7 +529,7 @@ RSS 更大）超出可用内存。
 | 序 | 项 | 阻塞度 | 返工成本 | 复用度 | 判定条件 | 综合 | 理由 |
 |---|---|---|---|---|---|---|---|
 | **1** | **S1 WAL 加密** | 5 | 4 | 5 | 阶段 3 | **最优** | 不加密 WAL 则"全生命周期加密"承诺残缺（WAL 含全部变更）；`jt-encrypted-object` 已有完整追加式语义与 `seal_chunk` 流式封装，Safekeeper 侧主要是接线而非新建 |
-| **2** | **K5 逻辑复制 MLS 过滤** | 5 | 3 | 4 | 阶段 4 | 优 | **已实现的 MAC 有一个明确后门**：高密行可原样复制到低密订阅端。pgoutput 的 `pgoutput_change()` 是单一收口点，改动面小、收益直接 |
+| ~~2~~ | ~~**K5 逻辑复制 MLS 过滤**~~ **已完成（§5.11）** | — | — | — | 阶段 4 | — | 主出口已封堵（表级）；仅"按行裁剪"待批次 5 的行级标签。**顺带修掉 `jt_sec_check_role` 的 all-of 语义缺陷**（该缺陷使 DROP/ALTER TABLE 对 secadmin 与 sysadmin 都恒被拒） |
 | **3** | **S2 nonce 方案闭环** | 4 | 5 | 4 | 阶段 0 冻结条件 | 优 | **越晚改代价越大**：已落盘对象需重加密。且它同时是对象格式冻结的阻塞项——格式不冻结，行级存储与 rekey 都缺基础 |
 | **4** | **I1+I2 身份引导** | 4 | 3 | 3 | 阶段 2 验收 | 良 | attest/KMS 已就位却无签发方，信任链断裂；三权分离目前靠 GUC 自设而非凭据派生，与 ADR-012 原意有距离 |
 | **5** | **K1 行级标记存储** | 5 | 4 | 2 | 阶段 4 判定 | 良 | 战略上最重要，但工作量最大（heap 元组 + 计划期注入 + 目录表 + 缓存失效四层联动），且依赖 K2/K3/K4，宜作为一组推进 |
@@ -472,8 +549,11 @@ RSS 更大）超出可用内存。
     → 集成面 6 点已完成（§5.2.2，libs 55/55 + safekeeper 37/37）
     → 仅剩：基础2 端到端验证（release 构建）+ key_epoch 轮换接入
 
-批次 2：K5 逻辑复制 MLS 过滤
-    → 堵住已实现 MAC 的唯一已知后门；pgoutput 单一收口点，改动可控
+批次 2：K5 逻辑复制 MLS 过滤 —— **已完成（2026-09-21，§5.11）**
+    → 堵住已实现 MAC 的唯一已知后门
+    → 收口点实为 reorderbuffer.c（后端内）而非 pgoutput（共享库），见 §5.11
+    → 表级粒度；"按行裁剪"随批次 5 的行级标签一并做
+    → 遗留：解码链路端到端需在有 neon.so 的构建上补验证（RMGR 134 阻塞）
 
 批次 3：S2 nonce 方案闭环 + 对象格式冻结
     → 冻结前置条件；越晚做已落盘对象越多，返工越贵
