@@ -398,7 +398,7 @@ PG v3 补丁 page LSN 明文；唯一加密页头的 pg_tde 代价是 `pg_receiv
 
 ## 5.11 K5 逻辑复制 MLS 过滤：已实现（2026-09-21）
 
-**结论：主出口已封堵**（子模块提交 `51dfede`，运行时 **72 PASS / 0 FAIL / 1 诚实 SKIP**）。
+**结论：主出口已封堵并端到端验证**（子模块提交 `51dfede` + `f9b7f518d9`，运行时 **79 PASS / 0 FAIL / 0 SKIP**）。
 
 ### 为什么这是优先项
 
@@ -462,17 +462,42 @@ max_level 提到 40"顺带把所有领域都放出去，是权限的隐式放大
 （见下），若只能端到端验证，则"判定是否正确"永远无法独立确认。有了它，判定
 矩阵可在任何构建上验证，运维也可用它审计"某张表会不会被复制出去"。
 
-### 遗留：解码链路端到端在本构建不可验（如实记录）
+### 解码链路端到端：已验证（2026-09-21，79/79，无 SKIP）
 
-`pg_logical_slot_get_binary_changes` 报 `resource manager with ID 134 not
-registered`——Neon fork 的 `RM_NEON` 未注册（`heapam.c` 里
-`XLogInsert(RM_NEON_ID, ...)`），而 macOS 侧没有可加载的 `neon.so`（只有
-aarch64 交叉产物）。**该阻塞与过滤逻辑无关**，故标注为 SKIP 而非 PASS。
+**上一轮标注的 SKIP 已消除**。根因不是"缺 neon.so"，而是两件可修的事：
 
-**接线已用目标码验证**（不依赖解码可运行）：`llvm-nm` 显示 `reorderbuffer.o`
-对 `jt_sec_emit_replication_denied` / `jt_sec_get_table_label` /
-`jt_sec_replication_may_emit` 有未定义引用，且在链接后的 postgres 二进制中
-全部解析——即过滤确实在解码路径上。要在有 `neon.so` 的构建上补端到端验证。
+1. `pgxn/neon_rmgr` 模块（`_PG_init` 里 `RegisterCustomRmgr(RM_NEON_ID, ...)`）
+   未安装进 jtsec 的 PG18 安装树；
+2. 现存的 `neon_rmgr.dylib` 是针对**别的 PG 版本**构建的——它引用
+   `ReorderBufferGetChange`，而 PG18 fork 把该分配器改名为
+   `ReorderBufferAllocChange`（`neon_rmgr_decode.c` 的
+   `#if PG_MAJORVERSION_NUM < 18` 改名宏即证据），故 dlopen 报
+   `Symbol not found`。
+
+**修法**：以 `PG_CONFIG=<jtsec-install>/bin/pg_config make` 针对本 PG 构建
+重编 neon_rmgr，装到 `install/lib/postgresql/`，服务以
+`shared_preload_libraries=neon_rmgr` 启动。
+
+**端到端判据（可证伪的一对，缺一不可）**：
+
+| 场景 | secret 行 | public 行 | 结论 |
+|---|---|---|---|
+| `max_level=10, cats=0` | **0** | 1 | 高密行被拦、公开行通过（证明解码链路在工作） |
+| `max_level=40, cats=1` | **1** | 1 | 同一高密行可外发（**反证**过滤按上限生效） |
+| `max_level=40, cats=0` | **0** | 1 | 仅提等级不授权类别仍被拦（正交性在链路层成立） |
+
+**判据必须用"行的值是否出现在解码输出里"**，不能用消息条数：pgoutput 每次
+变更发 B/R/I/C 四条消息（Begin/Relation/Insert/Commit），按条数判断会把元数据
+消息误当成数据行（第一版即因此把 4 条消息误读为"两行都过了"）。且第一行与
+第二行必须成对——只测第一行无法区分"过滤生效"与"根本没解码"。
+
+**观测面**：`jt_sec_replication_skipped()` 是 **per-backend** 计数器（`static`
+内存），解码发生在临时后端里，外部会话读到的永远是 0，故**不作为**观测手段。
+跨进程可观测的载体是 E2 审计事件（`action=replication_emit`，含
+`object_label` 与当时的 `max_level`，写共享的 PG 日志）。
+
+**测试脚本注意**：默认 `max_replication_slots=10`，每次解码建一个槽，跑几轮即
+耗尽（报 "all replication slots are in use"）且槽会钉住 WAL——解码后须 drop。
 
 ## 5.9 事故记录：基础2 全链路 OOM（2026-09-21）
 
@@ -529,7 +554,7 @@ RSS 更大）超出可用内存。
 | 序 | 项 | 阻塞度 | 返工成本 | 复用度 | 判定条件 | 综合 | 理由 |
 |---|---|---|---|---|---|---|---|
 | **1** | **S1 WAL 加密** | 5 | 4 | 5 | 阶段 3 | **最优** | 不加密 WAL 则"全生命周期加密"承诺残缺（WAL 含全部变更）；`jt-encrypted-object` 已有完整追加式语义与 `seal_chunk` 流式封装，Safekeeper 侧主要是接线而非新建 |
-| ~~2~~ | ~~**K5 逻辑复制 MLS 过滤**~~ **已完成（§5.11）** | — | — | — | 阶段 4 | — | 主出口已封堵（表级）；仅"按行裁剪"待批次 5 的行级标签。**顺带修掉 `jt_sec_check_role` 的 all-of 语义缺陷**（该缺陷使 DROP/ALTER TABLE 对 secadmin 与 sysadmin 都恒被拒） |
+| ~~2~~ | ~~**K5 逻辑复制 MLS 过滤**~~ **已完成并端到端验证（§5.11）** | — | — | — | 阶段 4 | — | 主出口已封堵（表级，真机解码链路验证 79/79）；仅"按行裁剪"待批次 5 的行级标签。**顺带修掉 `jt_sec_check_role` 的 all-of 语义缺陷**（该缺陷使 DROP/ALTER TABLE 对 secadmin 与 sysadmin 都恒被拒） |
 | **3** | **S2 nonce 方案闭环** | 4 | 5 | 4 | 阶段 0 冻结条件 | 优 | **越晚改代价越大**：已落盘对象需重加密。且它同时是对象格式冻结的阻塞项——格式不冻结，行级存储与 rekey 都缺基础 |
 | **4** | **I1+I2 身份引导** | 4 | 3 | 3 | 阶段 2 验收 | 良 | attest/KMS 已就位却无签发方，信任链断裂；三权分离目前靠 GUC 自设而非凭据派生，与 ADR-012 原意有距离 |
 | **5** | **K1 行级标记存储** | 5 | 4 | 2 | 阶段 4 判定 | 良 | 战略上最重要，但工作量最大（heap 元组 + 计划期注入 + 目录表 + 缓存失效四层联动），且依赖 K2/K3/K4，宜作为一组推进 |
@@ -553,7 +578,7 @@ RSS 更大）超出可用内存。
     → 堵住已实现 MAC 的唯一已知后门
     → 收口点实为 reorderbuffer.c（后端内）而非 pgoutput（共享库），见 §5.11
     → 表级粒度；"按行裁剪"随批次 5 的行级标签一并做
-    → 遗留：解码链路端到端需在有 neon.so 的构建上补验证（RMGR 134 阻塞）
+    → 解码链路端到端**已验证**（79/79，无 SKIP）；RMGR 134 需以 neon_rmgr 预加载（见 §5.11）
 
 批次 3：S2 nonce 方案闭环 + 对象格式冻结
     → 冻结前置条件；越晚做已落盘对象越多，返工越贵

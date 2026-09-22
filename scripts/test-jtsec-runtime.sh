@@ -5,8 +5,17 @@
 #   1) 带安全内核 patch 的 PG 构建（见 postgres/jtdb-patches/0001-*.patch）；
 #   2) 该构建已 initdb 并启动，监听 Unix socket（默认 /tmp）；
 #   3) 环境变量 JTDB_CACHE_ROOT 指向缓存卷（scripts/env.sh）；
-#   4) 实例以 -c jt_sec.superuser_fence=on 启动（围栏项验证需要；
-#      围栏为 PGC_SIGHUP，运行期不可 SET，故只能启动时给）。
+#   4) 实例以如下参数启动（缺一不可）：
+#        -c jt_sec.superuser_fence=on   （围栏项验证需要；PGC_SIGHUP，只能启动时给）
+#        -c jt_sec.mac_enabled=on       （缺则 §6~§11 的拒绝类断言全部假失败）
+#        -c wal_level=logical           （§13 逻辑复制需要）
+#        -c shared_preload_libraries=neon_rmgr
+#           （**§13 解码端到端的前置条件**：Neon fork 的 heapam 会写
+#            XLogInsert(RM_NEON_ID,...) 记录，解码读到它需要 rmgr 实现，
+#            否则报 "resource manager with ID 134 not registered"。
+#            neon_rmgr 必须针对本 PG 构建编译——PG18 的符号是
+#            ReorderBufferAllocChange，v17 及以下是 ReorderBufferGetChange，
+#            用错版本会报 Symbol not found。）
 #   可覆盖 PG_BIN / PGPORT / PGDATABASE / PGUSER 指向自己的构建。
 #
 # 覆盖：
@@ -22,6 +31,7 @@
 #   §10 逃逸路径围栏（docs/02 §3.5）
 #   §11 统一错误码 JT001-JT004（docs/05 §6.2）
 #   §12 E2 审计事件（docs/02 §7.2）
+#   §13 逻辑复制与 CDC 的 MLS 过滤（docs/02 §3.6）
 #
 # 用法: source scripts/env.sh && bash scripts/test-jtsec-runtime.sh
 set -u
@@ -236,6 +246,203 @@ if [ -f "$LOGF" ]; then
 else
   say "  SKIP  E2 事件验证（未设 JTDB_JTSEC_LOGFILE）"
 fi
+
+
+# ---------------------------------------------------------------------------
+say "=== 13. 逻辑复制与 CDC 的 MLS 过滤（docs/02 §3.6）==="
+# 逻辑解码是独立数据出口：它不"读表"，而是读 WAL，故 ExecutorStart/
+# ProcessUtility 的全部 MAC 检查都管不到它。不加过滤则高密表的数据会被
+# 原样发到任意订阅端，绕过整套 MAC。
+#
+# 本段验证四件事：
+#   a) publication DDL 需要 secadmin/sysadmin（出口的建立受控）
+#   b) 复制槽操作产生 E2 审计事件（出口的持久句柄留痕）
+#   c) **核心判据**：默认上限 0 时，高密表的变更**不被解码输出**
+#   d) **可证伪性**：把上限提高后，同一张表的变更**能够**被解码输出
+#      —— 若只验 c) 不验 d)，无法区分"过滤生效"与"解码根本没跑起来"
+#
+# 用 pg_logical_slot_get_changes 直接在发布端解码（不需要第二个实例），
+# 它走的是与逻辑复制**完全相同**的 reorderbuffer 路径。
+
+# 清掉历史遗留的 jt_* 槽：默认 max_replication_slots=10，泄漏会耗尽并让后续
+# 断言假失败；槽还会钉住 WAL 不回收。
+as "$ADMIN" "SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots WHERE slot_name LIKE 'jt_%';" >/dev/null 2>&1
+as "$ADMIN" "DROP TABLE IF EXISTS lr_public, lr_secret;" >/dev/null 2>&1
+as "$ADMIN" "CREATE TABLE lr_public(id int);" >/dev/null 2>&1
+as "$ADMIN" "CREATE TABLE lr_secret(id int);" >/dev/null 2>&1
+as "$ADMIN" "SECURITY LABEL FOR jt ON TABLE lr_public IS '10:';" >/dev/null 2>&1
+as "$ADMIN" "SECURITY LABEL FOR jt ON TABLE lr_secret IS '30:finance';" >/dev/null 2>&1
+
+# a) publication DDL 受控
+expect_err "普通用户不得 CREATE PUBLICATION" low_u \
+  "CREATE PUBLICATION p_low FOR TABLE lr_public" "requires secadmin or sysadmin"
+expect_ok  "secadmin 可 CREATE PUBLICATION"  "$ADMIN" \
+  "SET jt_sec.role='secadmin'; CREATE PUBLICATION p_lr FOR TABLE lr_public, lr_secret"
+
+expect_err "普通用户不得提高外发上限" low_u \
+  "SET jt_sec.replication_max_level=40" "ERROR|FATAL|permission"
+expect_err "普通用户不得提高外发类别授权" low_u \
+  "SET jt_sec.replication_max_categories=1" "ERROR|FATAL|permission"
+
+# b) 复制槽操作审计
+as "$ADMIN" "SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots WHERE slot_name='jt_lr_slot';" >/dev/null 2>&1
+as "$ADMIN" "SELECT * FROM pg_create_logical_replication_slot('jt_lr_slot','pgoutput');" >/dev/null 2>&1
+LOGF2="${JTDB_JTSEC_LOGFILE:-/tmp/jtsec-runtime.log}"
+if [ -f "$LOGF2" ]; then
+  if grep -q '"event":"replication_slot"' "$LOGF2" 2>/dev/null; then
+    ok "复制槽创建产生 E2 审计事件"
+  else no "复制槽创建产生 E2 审计事件" "日志无 replication_slot 事件"; fi
+else
+  say "  SKIP  复制槽审计（未设 JTDB_JTSEC_LOGFILE）"
+fi
+
+# c) 核心判据：判定矩阵（直接调用判定函数，不依赖解码链路）
+#
+# **为什么改为直接验证判定**：完整链路（pg_logical_slot_get_changes →
+# reorderbuffer → 过滤）在本构建上跑不通——Neon fork 的 RMGR 134 未注册
+# （逻辑解码读 WAL 即报 "resource manager with ID 134 not registered"），
+# 而本测试构建没有可加载的 neon.so（macOS 侧只有 aarch64 的交叉产物）。
+# 该阻塞与过滤逻辑无关，但会掩盖判定是否正确。故判定本身用 SQL 接口
+# 直接验证（jt_sec_replication_may_emit），解码链路单独标注为环境阻塞。
+expect_val "默认（max_level=10）公开对象可外发" "$ADMIN" \
+  "SELECT jt_sec_replication_may_emit('10:')" "t"
+expect_val "默认高密对象不外发（fail-closed）" "$ADMIN" \
+  "SELECT jt_sec_replication_may_emit('30:finance')" "f"
+expect_val "默认未标记对象可外发" "$ADMIN" \
+  "SELECT jt_sec_replication_may_emit('')" "t"
+expect_val "默认 max_level = 10（真实等级，非 0）" "$ADMIN" \
+  "SELECT current_setting('jt_sec.replication_max_level')" "10"
+expect_val "默认 max_categories = 0（不允许任何类别）" "$ADMIN" \
+  "SELECT current_setting('jt_sec.replication_max_categories')" "0"
+# 等级与类别正交：仅提等级不足以放行带类别的对象
+expect_val "仅提等级仍不放行带类别对象" "$ADMIN" \
+  "SET jt_sec.replication_max_level=40; SELECT jt_sec_replication_may_emit('30:finance')" "f"
+expect_val "显式授权类别后放行" "$ADMIN" \
+  "SET jt_sec.replication_max_level=40; SET jt_sec.replication_max_categories=1; SELECT jt_sec_replication_may_emit('30:finance')" "t"
+expect_val "未授权的其他类别仍拒绝" "$ADMIN" \
+  "SET jt_sec.replication_max_level=40; SET jt_sec.replication_max_categories=1; SELECT jt_sec_replication_may_emit('30:hr')" "f"
+expect_val "损坏标签不外发（fail-closed）" "$ADMIN" \
+  "SELECT jt_sec_replication_may_emit('30:finace')" "f"
+
+# d) **解码链路端到端**：真正的可证伪判据
+#
+# 这是本段最重要的一组：前面的判定矩阵只证明"判定函数正确"，不证明
+# "过滤点真的接在解码路径上、且真的拦住了数据"。故这里必须跑完整链路
+# （pg_logical_slot_get_binary_changes → reorderbuffer → 过滤）。
+#
+# **前置条件：Neon RMGR 134 必须已注册**。Neon fork 的 heapam 会写
+# `XLogInsert(RM_NEON_ID, ...)` 记录，逻辑解码读到它时需要对应的 rmgr 实现，
+# 否则报 "resource manager with ID 134 not registered"。注册发生在
+# `pgxn/neon_rmgr` 模块的 `_PG_init`（`RegisterCustomRmgr(RM_NEON_ID, ...)`），
+# 故服务必须以 `shared_preload_libraries=neon_rmgr` 启动，且该模块要**针对
+# 本 PG 构建**编译（PG18 的符号是 ReorderBufferAllocChange，v17 及以下是
+# ReorderBufferGetChange；用错版本的 .dylib 会报 Symbol not found）。
+#
+# 判据设计（两组互补，缺一不可）：
+#   - 低上限：高密行的**值**不得出现（过滤生效），公开行的值必须出现
+#     （证明解码链路本身在工作——否则"过滤生效"与"根本没解码"不可区分）
+#   - 高上限 + 授权类别：同一高密行的值**必须**出现（反证过滤按上限生效）
+#
+# 为什么用"行的值"而不是"消息条数"：pgoutput 每次变更会发 B/R/I/C 多条消息
+# （Begin/Relation/Insert/Commit），按条数判断会把元数据消息误当成数据。
+# 必须直接查数据值是否出现在解码输出里。
+
+lr_decode() {   # $1=max_level  $2=max_categories  $3=公开行值  $4=高密行值  $5=slot
+  "$RT/bin/psql" -h /tmp -p $P -U "$ADMIN" -d $DB -X -t -A 2>&1 <<SQLEOF
+SET jt_sec.mac_enabled=on;
+SET jt_sec.role='secadmin';
+SET jt_sec.replication_max_level=$1;
+SET jt_sec.replication_max_categories=$2;
+SELECT pg_drop_replication_slot('$5') FROM pg_replication_slots WHERE slot_name='$5';
+SELECT slot_name FROM pg_create_logical_replication_slot('$5','pgoutput');
+INSERT INTO lr_public VALUES($3);
+INSERT INTO lr_secret VALUES($4);
+SELECT count(*) FILTER (WHERE encode(data,'escape') LIKE '%$4%') || '|' ||
+       count(*) FILTER (WHERE encode(data,'escape') LIKE '%$3%')
+FROM pg_logical_slot_get_binary_changes('$5', NULL, NULL,
+     'proto_version','1','publication_names','p_lr');
+SELECT pg_drop_replication_slot('$5') FROM pg_replication_slots WHERE slot_name='$5';
+SQLEOF
+}
+
+# 前置：确认 RMGR 已注册（否则解码必然失败，后面的断言会误报为"过滤失效"）
+rmgr_probe=$("$RT/bin/psql" -h /tmp -p $P -U "$ADMIN" -d $DB -X -t -A 2>&1 <<'SQLEOF'
+SET jt_sec.role='secadmin';
+SELECT pg_drop_replication_slot('jt_rmgr_probe') FROM pg_replication_slots WHERE slot_name='jt_rmgr_probe';
+SELECT slot_name FROM pg_create_logical_replication_slot('jt_rmgr_probe','pgoutput');
+INSERT INTO lr_public VALUES(1);
+SELECT count(*) FROM pg_logical_slot_get_binary_changes('jt_rmgr_probe', NULL, NULL,
+       'proto_version','1','publication_names','p_lr');
+SELECT pg_drop_replication_slot('jt_rmgr_probe') FROM pg_replication_slots WHERE slot_name='jt_rmgr_probe';
+SQLEOF
+)
+if printf '%s' "$rmgr_probe" | grep -q "resource manager with ID 134 not registered"; then
+  no "Neon RMGR 134 已注册（解码前置条件）" \
+     "服务需以 shared_preload_libraries=neon_rmgr 启动，且 neon_rmgr 须针对本 PG 构建编译"
+else
+  ok "Neon RMGR 134 已注册（解码前置条件）"
+
+  # d-1) 低上限：高密行被过滤、公开行通过
+  r_low=$(lr_decode 10 0 2101 2202 jt_lr_low)
+  got_low=$(printf '%s' "$r_low" | grep -oE '^[0-9]+\|[0-9]+$' | tail -1)
+  if [ "$got_low" = "0|1" ]; then
+    ok "解码端到端：低上限下高密行被过滤、公开行通过（secret|public = ${got_low}）"
+  else
+    no "解码端到端：低上限下高密行被过滤、公开行通过" "期望 0|1，实际 ${got_low}（原始：${r_low}）"
+  fi
+
+  # d-2) 高上限 + 授权类别：同一高密行必须出现（反证）
+  r_high=$(lr_decode 40 1 2303 2404 jt_lr_high)
+  got_high=$(printf '%s' "$r_high" | grep -oE '^[0-9]+\|[0-9]+$' | tail -1)
+  if [ "$got_high" = "1|1" ]; then
+    ok "解码端到端：上限提高+类别授权后同一高密行可外发（反证过滤按上限生效）"
+  else
+    no "解码端到端：上限提高+类别授权后同一高密行可外发" "期望 1|1，实际 ${got_high}（原始：${r_high}）"
+  fi
+
+  # d-3) 仅提等级、不授权类别：仍不得外发（正交性在解码链路上也成立）
+  r_mid=$(lr_decode 40 0 2505 2606 jt_lr_mid)
+  got_mid=$(printf '%s' "$r_mid" | grep -oE '^[0-9]+\|[0-9]+$' | tail -1)
+  if [ "$got_mid" = "0|1" ]; then
+    ok "解码端到端：仅提等级未授权类别时高密行仍被过滤（正交性）"
+  else
+    no "解码端到端：仅提等级未授权类别时高密行仍被过滤" "期望 0|1，实际 $got_mid"
+  fi
+
+  # d-4) 过滤必须留下**可共享**的观测痕迹
+  #
+  # 注意不能用 `jt_sec_replication_skipped()` 断言：它是 **per-backend 内存
+  # 计数器**（static），而解码发生在 psql 的临时后端里，外部会话读到的永远是
+  # 0（实测踩到）。真正跨进程可观测的载体是 E2 审计事件——它写 PG 日志，
+  # 而日志是所有后端共享的。故这里断言日志里出现了 action=replication_emit
+  # 且带正确的对象标签与当时的 max_level。
+  LOGF3="${JTDB_JTSEC_LOGFILE:-/tmp/jtsec-runtime.log}"
+  if [ -f "$LOGF3" ]; then
+    if grep -q '"action":"replication_emit"' "$LOGF3" 2>/dev/null; then
+      ok "过滤产生 E2 审计事件（action=replication_emit，跨进程可观测）"
+    else
+      no "过滤产生 E2 审计事件" "日志无 action=replication_emit"
+    fi
+    # 事件必须带对象标签与当时的策略上限（可追溯"按什么规则被拦"）
+    ev_rep=$(grep '"action":"replication_emit"' "$LOGF3" 2>/dev/null | tail -1)
+    if printf '%s' "$ev_rep" | grep -q '"object_label":"30:finance"'; then
+      ok "事件含被拦对象的标签"
+    else
+      no "事件含被拦对象的标签" "$ev_rep"
+    fi
+    if printf '%s' "$ev_rep" | grep -qE '"max_level":[0-9]+'; then
+      ok "事件含当时的外发上限（可追溯判定依据）"
+    else
+      no "事件含当时的外发上限" "$ev_rep"
+    fi
+  else
+    say "  SKIP  过滤 E2 事件（未设 JTDB_JTSEC_LOGFILE）"
+  fi
+fi
+
+# 清理：槽会持续持有 WAL，不删会拖住后续测试
+as "$ADMIN" "SELECT pg_drop_replication_slot('jt_lr_slot') FROM pg_replication_slots WHERE slot_name='jt_lr_slot';" >/dev/null 2>&1
+as "$ADMIN" "SET jt_sec.role='secadmin'; DROP PUBLICATION IF EXISTS p_lr;" >/dev/null 2>&1
 
 # ---------------------------------------------------------------------------
 say "=== 结果 ==="
